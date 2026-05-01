@@ -1,3 +1,4 @@
+SHELL := /bin/bash
 SCANNER := flex
 SCANNER_PARAMS := lexico.l
 PARSER := bison
