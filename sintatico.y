@@ -40,6 +40,7 @@ string gen_temp_declarations();
 
 %left '+' '-'
 %left '*' '/'
+%left '(' ')'
 
 
 %%
@@ -82,6 +83,11 @@ E 			: E '+' E
 				$$.label = gentempcode();
 				$$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
 					" = " + $1.label + " / " + $3.label + ";\n";	
+			}
+			| '(' E ')'
+			{
+				$$.label = $2.label;
+				$$.traducao = $2.traducao;
 			}
 			| TK_NUM
 			{
