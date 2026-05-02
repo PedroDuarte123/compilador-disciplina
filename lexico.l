@@ -9,6 +9,7 @@ DIGITO [0-9]
 LETRA [a-zA-Z]
 
 DELIM {ESPACO}+
+FNUM {DIGITO}+"."{DIGITO}*
 NUM {DIGITO}+
 ID {LETRA}({LETRA}|[0-9]|_)*
 
@@ -18,16 +19,20 @@ ID {LETRA}({LETRA}|[0-9]|_)*
 
 {DELIM} 	{}
 
+"int"       { return TK_INT; }
+"float"     { return TK_FLOAT; }
+
 [+]			{ return *yytext; }
 [-]         { return *yytext; }
 [*]         { return *yytext; }
 [/]         { return *yytext; }
 [(]         { return *yytext; }
 [)]         { return *yytext; }
-
-[=] { return *yytext; }
+[=]         { return *yytext; }
+[;]         { return *yytext; }
 
 {NUM}		{ yylval.label = yytext; return TK_NUM; }
+{FNUM}      { yylval.label = yytext; return TK_FNUM; }
 {ID}        { yylval.label = yytext; return TK_ID; }
 
 .			{ fprintf(stderr, "Caractere nao reconhecido na linha %d: %s\n", linha, yytext); }
