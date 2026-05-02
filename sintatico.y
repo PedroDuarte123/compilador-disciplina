@@ -35,6 +35,7 @@ string gen_temp_declarations();
 %}
 
 %token TK_NUM
+%token TK_ID
 
 %start S
 
@@ -89,7 +90,21 @@ E 			: E '+' E
 				$$.label = $2.label;
 				$$.traducao = $2.traducao;
 			}
+			| '=' 
+			{
+				return '=';
+			}
+			| TK_ID '=' E
+			{
+				$$.label = $1.label;
+				$$.traducao = $3.traducao + "\t" + $$.label + " = " + $3.label + ";\n";
+			}
 			| TK_NUM
+			{
+				$$.label = gentempcode();
+				$$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
+			}
+			| TK_ID
 			{
 				$$.label = gentempcode();
 				$$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
