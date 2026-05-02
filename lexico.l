@@ -28,7 +28,7 @@ ID {LETRA}({LETRA}|[0-9]|_)*
 [=] { return *yytext; }
 
 {NUM}		{ yylval.label = yytext; return TK_NUM; }
-{ID}        {yylval.label = strdup(yytext); return TK_ID;}
+{ID}        { yylval.label = yytext; return TK_ID; }
 
 .			{ fprintf(stderr, "Caractere nao reconhecido na linha %d: %s\n", linha, yytext); }
 

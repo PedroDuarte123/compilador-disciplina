@@ -41,6 +41,7 @@ string gen_temp_declarations();
 
 %left '+' '-'
 %left '*' '/'
+
 %left '(' ')'
 
 
@@ -89,10 +90,6 @@ E 			: E '+' E
 			{
 				$$.label = $2.label;
 				$$.traducao = $2.traducao;
-			}
-			| '=' 
-			{
-				return '=';
 			}
 			| TK_ID '=' E
 			{
