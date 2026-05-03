@@ -21,6 +21,11 @@ ID {LETRA}({LETRA}|[0-9]|_)*
 
 "int"       { return TK_INT; }
 "float"     { return TK_FLOAT; }
+"char"      { return TK_CHAR; }
+"bool"      { return TK_BOOLEAN; }
+"true"      { yylval.label = "1"; return TK_BOOL_LIT; }
+"false"     { yylval.label = "0"; return TK_BOOL_LIT; }
+"'"[^'\\\n]"'"   { yylval.label = yytext; return TK_CHAR_LIT; }
 
 [+]			{ return *yytext; }
 [-]         { return *yytext; }
