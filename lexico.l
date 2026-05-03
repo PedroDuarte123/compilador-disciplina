@@ -9,8 +9,8 @@ DIGITO [0-9]
 LETRA [a-zA-Z]
 
 DELIM {ESPACO}+
-FNUM {DIGITO}+"."{DIGITO}*
-NUM {DIGITO}+
+FNUM [-]?{DIGITO}+"."{DIGITO}*
+NUM [-]?{DIGITO}+
 ID {LETRA}({LETRA}|[0-9]|_)*
 
 %%
