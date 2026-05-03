@@ -19,13 +19,13 @@ struct atributos
 struct simbolo{
 	string nome;
 	string tipo;
-	string memoria;
+	string nome_interno;
 	bool inicializado;
 
-	simbolo() : nome(""), tipo(""), memoria(""), inicializado(false) {}
+	simbolo() : nome(""), tipo(""), nome_interno(""), inicializado(false) {}
 
-	simbolo(string argnome, string argtipo, string argmemoria, bool arginicializado = false):
-		nome(argnome), tipo(argtipo), memoria(argmemoria), inicializado(arginicializado) {} 
+	simbolo(string argnome, string argtipo, string argnomeinterno, bool arginicializado = false):
+		nome(argnome), tipo(argtipo), nome_interno(argnomeinterno), inicializado(arginicializado) {} 
 };
 
 #define YYSTYPE atributos
@@ -93,7 +93,7 @@ atributos gerar_op_logica(const atributos& expressao_esquerda, const char* op, c
 
 %%
 
-S			: LISTA_STMT
+S			: LISTA_COMANDOS
 			{
 				codigo_gerado = "/*Compilador FOCA*/\n"
 								"#include <stdio.h>\n"
@@ -127,7 +127,7 @@ TIPO		: TK_INT
 			}
 			;
 
-LISTA_STMT	: LISTA_STMT STMT
+LISTA_COMANDOS	: LISTA_COMANDOS COMANDO
 			{
 				$$.traducao = $1.traducao + $2.traducao;
 			}
@@ -137,7 +137,7 @@ LISTA_STMT	: LISTA_STMT STMT
 			}
 			;
 
-STMT		: TIPO TK_ID ';'
+COMANDO		: TIPO TK_ID ';'
 			{
 				if (buscar_simbolo_const($2.label))
 				{
@@ -262,7 +262,7 @@ E 			: E '+' E
 					}
 
 					sym->inicializado = true;
-					$$.label = sym->memoria;
+					$$.label = sym->nome_interno;
 					$$.tipo = tipo_expressao_esquerda;
 					$$.traducao = codigo_expressao_direita + "\t" + $$.label + " = " + label_expressao_direita + ";\n";
 				}
@@ -309,11 +309,11 @@ E 			: E '+' E
 					if (t == "float")
 					{
 						$$.label = gentempcode("float");
-						$$.traducao = "\t" + $$.label + " = " + sym->memoria + ";\n";
+						$$.traducao = "\t" + $$.label + " = " + sym->nome_interno + ";\n";
 					}
 					else  /* int, char, boolean — usa memória diretamente */
 					{
-						$$.label = sym->memoria;
+						$$.label = sym->nome_interno;
 						$$.traducao = "";
 					}
 				}
@@ -464,12 +464,12 @@ void atribuir_temporario(string nome)
 	simbolo* sym = buscar_simbolo(nome);
 	if (!sym)
 		return;
-	if (sym->memoria.empty())
+	if (sym->nome_interno.empty())
 	{
 		string tipo = sym->tipo;
 		if (!is_tipo_valido(tipo))
 			tipo = "int";
-		sym->memoria = gentempcode(tipo);
+		sym->nome_interno = gentempcode(tipo);
 	}
 }
 
