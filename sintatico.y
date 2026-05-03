@@ -1,21 +1,7 @@
 %{
-// -----------------------------
-// Arquivo do Bison (parser)
-// -----------------------------
-// Este arquivo descreve a gramática da linguagem FOCA e, junto com as ações
-// semânticas (blocos { ... }), gera uma "tradução" (string) que vira código C.
-//
-// Estrutura típica do .y:
-// 1) Prologue %{ ... %}  -> código C/C++ copiado para o arquivo gerado (y.tab.c)
-// 2) Declarações Bison    -> %token, %left, %start, etc.
-// 3) Gramática            -> regras e ações semânticas
-// 4) Epilogue (após %%)   -> mais código C/C++ copiado ao final do y.tab.c
-
 #include <iostream>
 #include <string>
 #include <map>
-
-
 
 using namespace std;
 
@@ -49,10 +35,16 @@ map<string, string> tipos_temp;
 simbolo* buscar_simbolo(const string& nome);
 const simbolo* buscar_simbolo_const(const string& nome);
 
-static inline bool is_tipo_valido(const string& t) { return t == "int" || t == "float"; }
+static inline bool is_tipo_valido(const string& t) { return t == "int" || t == "float" || t == "char" || t == "boolean"; }
 static inline string tipo_resultado_aritmetico(const string& a, const string& b)
 {
 	if (a == "float" || b == "float") return "float";
+	return "int";
+}
+static inline string tipo_para_c(const string& t) {
+	if (t == "boolean") return "int";
+	if (t == "char")    return "char";
+	if (t == "float")   return "float";
 	return "int";
 }
 
@@ -72,6 +64,10 @@ atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* o
 %token TK_ID
 %token TK_INT
 %token TK_FLOAT
+%token TK_CHAR
+%token TK_BOOLEAN
+%token TK_BOOL_LIT
+%token TK_CHAR_LIT
 
 %start S
 
@@ -82,7 +78,7 @@ atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* o
 
 %%
 
-S 			: D E OPT_PONTO_VIRGULA
+S			: LISTA_STMT OPT_PONTO_VIRGULA
 			{
 				codigo_gerado = "/*Compilador FOCA*/\n"
 								"#include <stdio.h>\n"
@@ -90,7 +86,7 @@ S 			: D E OPT_PONTO_VIRGULA
 
 				codigo_gerado += gen_temp_declarations();
 
-				codigo_gerado += $2.traducao;
+				codigo_gerado += $1.traducao;
 
 				codigo_gerado += "\treturn 0;"
 							"\n}\n";
@@ -109,23 +105,43 @@ TIPO		: TK_INT
 			{
 				$$.tipo = "float";
 			}
+			| TK_CHAR
+			{
+				$$.tipo = "char";
+			}
+			| TK_BOOLEAN
+			{
+				$$.tipo = "boolean";
+			}
 			;
 
-
-D 			: D TIPO TK_ID ';'
+/* LISTA_STMT substitui o antigo "D E":
+   permite intercalar declarações e expressões livremente */
+LISTA_STMT	: LISTA_STMT STMT
 			{
-				if (buscar_simbolo_const($3.label))
-				{
-					yyerror("Variável '" + $3.label + "' redeclarada");
-				}
-				else
-				{
-					tabela_simbolos.emplace($3.label, simbolo($3.label, $2.tipo, "", false));
-				}
+				$$.traducao = $1.traducao + $2.traducao;
 			}
 			| /* vazio */
 			{
-				/* base da recursao de D */
+				$$.traducao = "";
+			}
+			;
+
+STMT		: TIPO TK_ID ';'
+			{
+				if (buscar_simbolo_const($2.label))
+				{
+					yyerror("Variável '" + $2.label + "' redeclarada");
+				}
+				else
+				{
+					tabela_simbolos.emplace($2.label, simbolo($2.label, $1.tipo, "", false));
+				}
+				$$.traducao = "";
+			}
+			| E ';'
+			{
+				$$.traducao = $1.traducao;
 			}
 			;
 
@@ -178,34 +194,52 @@ E 			: E '+' E
 					string tipo_expressao_direita = $3.tipo;
 					string label_expressao_direita = $3.label;
 					string codigo_expressao_direita = $3.traducao;
-				if (tipo_expressao_esquerda == "float" && tipo_expressao_direita == "int")
-				{
-					string tmp = gentempcode("float");
-					codigo_expressao_direita += "\t" + tmp + " = (float) " + label_expressao_direita + ";\n";
-					label_expressao_direita = tmp;
-					tipo_expressao_direita = "float";
-				}
-				if (tipo_expressao_esquerda == "int" && tipo_expressao_direita == "float")
-				{
-					yyerror("Conversão explícita necessária para atribuir float em int");
-				}
-				sym->inicializado = true;
-				$$.label = sym->memoria;
-				$$.tipo = tipo_expressao_esquerda;
-	    		$$.traducao = codigo_expressao_direita + "\t" + $$.label + " = " + label_expressao_direita + ";\n";
+
+					if (tipo_expressao_esquerda == "float" && tipo_expressao_direita == "int")
+					{
+						string tmp = gentempcode("float");
+						codigo_expressao_direita += "\t" + tmp + " = (float) " + label_expressao_direita + ";\n";
+						label_expressao_direita = tmp;
+						tipo_expressao_direita = "float";
+					}
+					else if (tipo_expressao_esquerda == "int" && tipo_expressao_direita == "float")
+					{
+						yyerror("Conversão explícita necessária para atribuir float em int");
+					}
+					else if (tipo_expressao_esquerda != tipo_expressao_direita)
+					{
+						yyerror("Tipos incompatíveis: não é possível atribuir " + tipo_expressao_direita + " em " + tipo_expressao_esquerda);
+					}
+
+					sym->inicializado = true;
+					$$.label = sym->memoria;
+					$$.tipo = tipo_expressao_esquerda;
+					$$.traducao = codigo_expressao_direita + "\t" + $$.label + " = " + label_expressao_direita + ";\n";
 				}
 			}
 			| TK_NUM
 			{
-				$$.label = gentempcode("int");
-				$$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
+				$$.label = $1.label;
+				$$.traducao = "";
 				$$.tipo = "int";
 			}
 			| TK_FNUM
 			{
-				$$.label = gentempcode("float");
-				$$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
+				$$.label = $1.label;
+				$$.traducao = "";
 				$$.tipo = "float";
+			}
+			| TK_BOOL_LIT
+			{
+				$$.label = $1.label;
+				$$.traducao = "";
+				$$.tipo = "boolean";
+			}
+			| TK_CHAR_LIT
+			{
+				$$.label = $1.label;
+				$$.traducao = "";
+				$$.tipo = "char";
 			}
 			| TK_ID
 			{
@@ -224,13 +258,11 @@ E 			: E '+' E
 					$$.tipo = t;
 					if (t == "float")
 					{
-						// Para float, sempre gera um "load" para um temporário de expressão.
 						$$.label = gentempcode("float");
 						$$.traducao = "\t" + $$.label + " = " + sym->memoria + ";\n";
 					}
-					else
+					else  /* int, char, boolean — usa memória diretamente */
 					{
-						// Para int, usar diretamente a célula de memória da variável.
 						$$.label = sym->memoria;
 						$$.traducao = "";
 					}
@@ -248,8 +280,8 @@ string gentempcode(string tipo)
 {
 	var_temp_qnt++;
 	string temp = "t" + to_string(var_temp_qnt);
-    tipos_temp[temp] = tipo;
-    return temp;
+	tipos_temp[temp] = tipo;
+	return temp;
 }
 
 string upcast_para_float(string label, string tipo, string &code)
@@ -259,6 +291,21 @@ string upcast_para_float(string label, string tipo, string &code)
 	string tmp = gentempcode("float");
 	code += "\t" + tmp + " = (float) " + label + ";\n";
 	return tmp;
+}
+
+static inline bool is_literal_label(const string& label)
+{
+	return !label.empty() && (isdigit((unsigned char)label[0]) || label[0] == '\'');
+}
+
+static inline void ensure_float_temp_for_literal(string &label, string &code, const atributos &expr)
+{
+	if (expr.tipo == "float" && expr.traducao.empty() && is_literal_label(label))
+	{
+		string tmp = gentempcode("float");
+		code += "\t" + tmp + " = " + label + ";\n";
+		label = tmp;
+	}
 }
 
 atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita)
@@ -273,6 +320,8 @@ atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* o
 	{
 		label_expressao_esquerda = upcast_para_float(label_expressao_esquerda, expressao_esquerda.tipo, codigo_expressao_esquerda);
 		label_expressao_direita = upcast_para_float(label_expressao_direita, expressao_direita.tipo, codigo_expressao_direita);
+		ensure_float_temp_for_literal(label_expressao_esquerda, codigo_expressao_esquerda, expressao_esquerda);
+		ensure_float_temp_for_literal(label_expressao_direita, codigo_expressao_direita, expressao_direita);
 	}
 	out.tipo = tipo_res;
 	out.label = gentempcode(tipo_res);
@@ -281,27 +330,25 @@ atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* o
 	return out;
 }
 
-	
 string gen_temp_declarations()
 {
 	string declarations;
 	for (int i = 1; i <= var_temp_qnt; i++){
-		 string temp = "t" + to_string(i);
-        string tipo = tipos_temp[temp];
-        if (tipo.empty()) tipo = "int";  // default
-        declarations += "\t" + tipo + " " + temp + ";\n";
+		string temp = "t" + to_string(i);
+		string tipo = tipos_temp[temp];
+		if (tipo.empty()) tipo = "int";
+		declarations += "\t" + tipo_para_c(tipo) + " " + temp + ";\n";
 	}
-		
 	if (var_temp_qnt > 0)
 		declarations += "\n";
 	return declarations;
 }
 
 void is_declarado(string nome){
-	if (!buscar_simbolo_const(nome)) { /* Verifica se a variável foi declarada */
-        yyerror("Variável '" + nome + "' não declarada");
+	if (!buscar_simbolo_const(nome)) {
+		yyerror("Variável '" + nome + "' não declarada");
 		return;
-    }
+	}
 }
 
 void is_inicializado(string nome){
@@ -311,10 +358,10 @@ void is_inicializado(string nome){
 		yyerror("Variável '" + nome + "' não declarada");
 		return;
 	}
-	if (!sym->inicializado) { /* Verifica se a variável foi inicializada */
-        yyerror("Variável '" + nome + "' usada antes de inicialização");
+	if (!sym->inicializado) {
+		yyerror("Variável '" + nome + "' usada antes de inicialização");
 		return;
-    }
+	}
 }
 
 void atribuir_temporario(string nome)
@@ -339,8 +386,6 @@ simbolo* buscar_simbolo(const string& nome)
 	return &it->second;
 }
 
-
-// Função só de leitura para evitar modificações acidentais
 const simbolo* buscar_simbolo_const(const string& nome)
 {
 	auto it = tabela_simbolos.find(nome);
@@ -348,7 +393,6 @@ const simbolo* buscar_simbolo_const(const string& nome)
 		return nullptr;
 	return &it->second;
 }
-
 
 int main(int argc, char* argv[])
 {
