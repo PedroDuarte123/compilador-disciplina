@@ -35,6 +35,15 @@ ID {LETRA}({LETRA}|[0-9]|_)*
 [)]         { return *yytext; }
 [=]         { return *yytext; }
 [;]         { return *yytext; }
+"=="        { return TK_EQ; }
+"!="        { return TK_NEQ; }
+"&&"        { return TK_AND; }
+"||"        { return TK_OR; }
+"!"         { return TK_NOT; }
+"<"         { return TK_LT; }
+">"         { return TK_GT; }
+"<="        { return TK_LE; }
+">="        { return TK_GE; }
 
 {NUM}		{ yylval.label = yytext; return TK_NUM; }
 {FNUM}      { yylval.label = yytext; return TK_FNUM; }

@@ -57,6 +57,8 @@ void is_inicializado(string);
 void atribuir_temporario(string);
 string upcast_para_float(string label, string tipo, string &code);
 atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
+atributos gerar_op_relacional(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
+atributos gerar_op_logica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
 %}
 
 %token TK_NUM
@@ -68,12 +70,25 @@ atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* o
 %token TK_BOOLEAN
 %token TK_BOOL_LIT
 %token TK_CHAR_LIT
+%token TK_EQ
+%token TK_NEQ
+%token TK_LT
+%token TK_GT
+%token TK_LE
+%token TK_GE
+%token TK_AND
+%token TK_OR
+%token TK_NOT
 
 %start S
 
 %right '='
+%left TK_OR
+%left TK_AND
+%left TK_EQ TK_NEQ TK_LT TK_GT TK_LE TK_GE
 %left '+' '-'
 %left '*' '/'
+%right TK_NOT
 
 
 %%
@@ -92,7 +107,6 @@ S			: LISTA_STMT
 							"\n}\n";
 			}
 			;
-
 
 
 TIPO		: TK_INT
@@ -156,6 +170,46 @@ E 			: E '+' E
 			| E '/' E
 			{
 				$$ = gerar_op_aritmetica($1, "/", $3);
+			}
+			| E TK_EQ E
+			{
+				$$ = gerar_op_relacional($1, "==", $3);
+			}
+			| E TK_NEQ E
+			{
+				$$ = gerar_op_relacional($1, "!=", $3);
+			}
+			| E TK_LT E
+			{
+				$$ = gerar_op_relacional($1, "<", $3);
+			}
+			| E TK_GT E
+			{
+				$$ = gerar_op_relacional($1, ">", $3);
+			}
+			| E TK_LE E
+			{
+				$$ = gerar_op_relacional($1, "<=", $3);
+			}
+			| E TK_GE E
+			{
+				$$ = gerar_op_relacional($1, ">=", $3);
+			}
+			| E TK_AND E
+			{
+				$$ = gerar_op_logica($1, "&&", $3);
+			}
+			| E TK_OR E
+			{
+				$$ = gerar_op_logica($1, "||", $3);
+			}
+			| TK_NOT E
+			{
+				if ($2.tipo != "boolean")
+					yyerror("Operador lógico '!' exige boolean");
+				$$.tipo = "boolean";
+				$$.label = gentempcode("boolean");
+				$$.traducao = $2.traducao + "\t" + $$.label + " = !" + $2.label + ";\n";
 			}
 			| '(' TIPO ')' E
 			{
@@ -304,6 +358,11 @@ static inline void ensure_float_temp_for_literal(string &label, string &code, co
 	}
 }
 
+static inline bool is_boolean(const string& tipo)
+{
+	return tipo == "boolean";
+}
+
 atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita)
 {
 	atributos out;
@@ -321,6 +380,46 @@ atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* o
 	}
 	out.tipo = tipo_res;
 	out.label = gentempcode(tipo_res);
+	out.traducao = codigo_expressao_esquerda + codigo_expressao_direita + "\t" + out.label +
+		" = " + label_expressao_esquerda + " " + op + " " + label_expressao_direita + ";\n";
+	return out;
+}
+
+atributos gerar_op_relacional(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita)
+{
+	atributos out;
+	string tipo_comum = tipo_resultado_aritmetico(expressao_esquerda.tipo, expressao_direita.tipo);
+	string codigo_expressao_esquerda = expressao_esquerda.traducao;
+	string codigo_expressao_direita = expressao_direita.traducao;
+	string label_expressao_esquerda = expressao_esquerda.label;
+	string label_expressao_direita = expressao_direita.label;
+	if (tipo_comum == "float")
+	{
+		label_expressao_esquerda = upcast_para_float(label_expressao_esquerda, expressao_esquerda.tipo, codigo_expressao_esquerda);
+		label_expressao_direita = upcast_para_float(label_expressao_direita, expressao_direita.tipo, codigo_expressao_direita);
+		ensure_float_temp_for_literal(label_expressao_esquerda, codigo_expressao_esquerda, expressao_esquerda);
+		ensure_float_temp_for_literal(label_expressao_direita, codigo_expressao_direita, expressao_direita);
+	}
+	out.tipo = "boolean";
+	out.label = gentempcode("boolean");
+	out.traducao = codigo_expressao_esquerda + codigo_expressao_direita + "\t" + out.label +
+		" = " + label_expressao_esquerda + " " + op + " " + label_expressao_direita + ";\n";
+	return out;
+}
+
+atributos gerar_op_logica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita)
+{
+	atributos out;
+	if (!is_boolean(expressao_esquerda.tipo) || !is_boolean(expressao_direita.tipo))
+	{
+		yyerror("Operadores lógicos '&&' e '||' exigem operandos booleanos");
+	}
+	string codigo_expressao_esquerda = expressao_esquerda.traducao;
+	string codigo_expressao_direita = expressao_direita.traducao;
+	string label_expressao_esquerda = expressao_esquerda.label;
+	string label_expressao_direita = expressao_direita.label;
+	out.tipo = "boolean";
+	out.label = gentempcode("boolean");
 	out.traducao = codigo_expressao_esquerda + codigo_expressao_direita + "\t" + out.label +
 		" = " + label_expressao_esquerda + " " + op + " " + label_expressao_direita + ";\n";
 	return out;
