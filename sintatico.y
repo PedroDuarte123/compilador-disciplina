@@ -78,7 +78,7 @@ atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* o
 
 %%
 
-S			: LISTA_STMT OPT_PONTO_VIRGULA
+S			: LISTA_STMT
 			{
 				codigo_gerado = "/*Compilador FOCA*/\n"
 								"#include <stdio.h>\n"
@@ -93,9 +93,7 @@ S			: LISTA_STMT OPT_PONTO_VIRGULA
 			}
 			;
 
-OPT_PONTO_VIRGULA	: ';'
-			| /* vazio */
-			;
+
 
 TIPO		: TK_INT
 			{
@@ -217,26 +215,26 @@ E 			: E '+' E
 			}
 			| TK_NUM
 			{
-				$$.label = $1.label;
-				$$.traducao = "";
+				$$.label = gentempcode("int");
+				$$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
 				$$.tipo = "int";
 			}
 			| TK_FNUM
 			{
-				$$.label = $1.label;
-				$$.traducao = "";
+				$$.label = gentempcode("float");
+				$$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
 				$$.tipo = "float";
 			}
 			| TK_BOOL_LIT
 			{
-				$$.label = $1.label;
-				$$.traducao = "";
+				$$.label = gentempcode("boolean");
+				$$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
 				$$.tipo = "boolean";
 			}
 			| TK_CHAR_LIT
 			{
-				$$.label = $1.label;
-				$$.traducao = "";
+				$$.label = gentempcode("char");
+				$$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
 				$$.tipo = "char";
 			}
 			| TK_ID
