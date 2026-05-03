@@ -115,8 +115,6 @@ TIPO		: TK_INT
 			}
 			;
 
-/* LISTA_STMT substitui o antigo "D E":
-   permite intercalar declarações e expressões livremente */
 LISTA_STMT	: LISTA_STMT STMT
 			{
 				$$.traducao = $1.traducao + $2.traducao;
