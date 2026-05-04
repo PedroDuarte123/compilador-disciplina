@@ -70,12 +70,12 @@ atributos gerar_op_logica(const atributos& expressao_esquerda, const char* op, c
 %token TK_BOOLEAN
 %token TK_BOOL_LIT
 %token TK_CHAR_LIT
-%token TK_EQ
-%token TK_NEQ
-%token TK_LT
-%token TK_GT
-%token TK_LE
-%token TK_GE
+%token TK_IGUAL
+%token TK_DIFERENTE
+%token TK_MENOR
+%token TK_MAIOR
+%token TK_MENOR_OU_IGUAL
+%token TK_MAIOR_OU_IGUAL
 %token TK_AND
 %token TK_OR
 %token TK_NOT
@@ -85,7 +85,7 @@ atributos gerar_op_logica(const atributos& expressao_esquerda, const char* op, c
 %right '='
 %left TK_OR
 %left TK_AND
-%left TK_EQ TK_NEQ TK_LT TK_GT TK_LE TK_GE
+%left TK_IGUAL TK_DIFERENTE TK_MENOR TK_MAIOR TK_MENOR_OU_IGUAL TK_MAIOR_OU_IGUAL
 %left '+' '-'
 %left '*' '/'
 %right TK_NOT
@@ -171,27 +171,27 @@ E 			: E '+' E
 			{
 				$$ = gerar_op_aritmetica($1, "/", $3);
 			}
-			| E TK_EQ E
+			| E TK_IGUAL E
 			{
 				$$ = gerar_op_relacional($1, "==", $3);
 			}
-			| E TK_NEQ E
+			| E TK_DIFERENTE E
 			{
 				$$ = gerar_op_relacional($1, "!=", $3);
 			}
-			| E TK_LT E
+			| E TK_MENOR E
 			{
 				$$ = gerar_op_relacional($1, "<", $3);
 			}
-			| E TK_GT E
+			| E TK_MAIOR E
 			{
 				$$ = gerar_op_relacional($1, ">", $3);
 			}
-			| E TK_LE E
+			| E TK_MENOR_OU_IGUAL E
 			{
 				$$ = gerar_op_relacional($1, "<=", $3);
 			}
-			| E TK_GE E
+			| E TK_MAIOR_OU_IGUAL E
 			{
 				$$ = gerar_op_relacional($1, ">=", $3);
 			}

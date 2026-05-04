@@ -26,15 +26,15 @@ ID {LETRA}({LETRA}|[0-9]|_)*
 "true"      { yylval.label = "1"; return TK_BOOL_LIT; }
 "false"     { yylval.label = "0"; return TK_BOOL_LIT; }
 "'"[^'\\\n]"'"   { yylval.label = yytext; return TK_CHAR_LIT; }
-"=="        { return TK_EQ; }
-"!="        { return TK_NEQ; }
+"=="        { return TK_IGUAL; }
+"!="        { return TK_DIFERENTE; }
 "&&"        { return TK_AND; }
 "||"        { return TK_OR; }
 "!"         { return TK_NOT; }
-"<"         { return TK_LT; }
-">"         { return TK_GT; }
-"<="        { return TK_LE; }
-">="        { return TK_GE; }
+"<"         { return TK_MENOR; }
+">"         { return TK_MAIOR; }
+"<="        { return TK_MENOR_OU_IGUAL; }
+">="        { return TK_MAIOR_OU_IGUAL; }
 
 [+]			{ return *yytext; }
 [-]         { return *yytext; }
