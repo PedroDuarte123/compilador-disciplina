@@ -35,13 +35,13 @@ map<string, string> tipos_temp;
 simbolo* buscar_simbolo(const string& nome);
 const simbolo* buscar_simbolo_const(const string& nome);
 
-static inline bool is_tipo_valido(const string& t) { return t == "int" || t == "float" || t == "char" || t == "boolean"; }
-static inline string tipo_resultado_aritmetico(const string& a, const string& b)
+bool is_tipo_valido(const string& t) { return t == "int" || t == "float" || t == "char" || t == "boolean"; }
+string tipo_resultado_aritmetico(const string& a, const string& b)
 {
 	if (a == "float" || b == "float") return "float";
 	return "int";
 }
-static inline string tipo_para_c(const string& t) {
+string tipo_para_c(const string& t) {
 	if (t == "boolean") return "int";
 	if (t == "char")    return "char";
 	if (t == "float")   return "float";
@@ -343,12 +343,12 @@ string upcast_para_float(string label, string tipo, string &code)
 	return tmp;
 }
 
-static inline bool is_literal_label(const string& label)
+bool is_literal_label(const string& label)
 {
 	return !label.empty() && (isdigit((unsigned char)label[0]) || label[0] == '\'');
 }
 
-static inline void ensure_float_temp_for_literal(string &label, string &code, const atributos &expr)
+void ensure_float_temp_for_literal(string &label, string &code, const atributos &expr)
 {
 	if (expr.tipo == "float" && expr.traducao.empty() && is_literal_label(label))
 	{
@@ -358,7 +358,7 @@ static inline void ensure_float_temp_for_literal(string &label, string &code, co
 	}
 }
 
-static inline bool is_boolean(const string& tipo)
+bool is_boolean(const string& tipo)
 {
 	return tipo == "boolean";
 }
