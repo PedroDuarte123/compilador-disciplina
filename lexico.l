@@ -26,15 +26,6 @@ ID {LETRA}({LETRA}|[0-9]|_)*
 "true"      { yylval.label = "1"; return TK_BOOL_LIT; }
 "false"     { yylval.label = "0"; return TK_BOOL_LIT; }
 "'"[^'\\\n]"'"   { yylval.label = yytext; return TK_CHAR_LIT; }
-
-[+]			{ return *yytext; }
-[-]         { return *yytext; }
-[*]         { return *yytext; }
-[/]         { return *yytext; }
-[(]         { return *yytext; }
-[)]         { return *yytext; }
-[=]         { return *yytext; }
-[;]         { return *yytext; }
 "=="        { return TK_EQ; }
 "!="        { return TK_NEQ; }
 "&&"        { return TK_AND; }
@@ -44,6 +35,16 @@ ID {LETRA}({LETRA}|[0-9]|_)*
 ">"         { return TK_GT; }
 "<="        { return TK_LE; }
 ">="        { return TK_GE; }
+
+[+]			{ return *yytext; }
+[-]         { return *yytext; }
+[*]         { return *yytext; }
+[/]         { return *yytext; }
+[(]         { return *yytext; }
+[)]         { return *yytext; }
+[=]         { return *yytext; }
+[;]         { return *yytext; }
+
 
 {NUM}		{ yylval.label = yytext; return TK_NUM; }
 {FNUM}      { yylval.label = yytext; return TK_FNUM; }
