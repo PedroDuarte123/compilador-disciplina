@@ -1,0 +1,10 @@
+string A;
+string B;
+string C;
+
+A = "ola";
+B = " mundo";
+C = A + B + "!";
+
+bool R;
+R = C == "ola mundo!";

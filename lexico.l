@@ -12,6 +12,7 @@ DELIM {ESPACO}+
 FNUM [-]?{DIGITO}+"."{DIGITO}*
 NUM [-]?{DIGITO}+
 ID {LETRA}({LETRA}|[0-9]|_)*
+STRLIT \"([^\\\"\n]|\\.)*\"
 
 %%
 
@@ -23,9 +24,11 @@ ID {LETRA}({LETRA}|[0-9]|_)*
 "float"     { return TK_FLOAT; }
 "char"      { return TK_CHAR; }
 "bool"      { return TK_BOOLEAN; }
+"string"    { return TK_STRING; }
 "true"      { yylval.label = "1"; return TK_BOOL_LIT; }
 "false"     { yylval.label = "0"; return TK_BOOL_LIT; }
 "'"[^'\\\n]"'"   { yylval.label = yytext; return TK_CHAR_LIT; }
+{STRLIT}     { yylval.label = yytext; return TK_STR_LIT; }
 "=="        { return TK_IGUAL; }
 "!="        { return TK_DIFERENTE; }
 "&&"        { return TK_AND; }
