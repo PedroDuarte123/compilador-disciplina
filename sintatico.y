@@ -8,6 +8,7 @@ using namespace std;
 int var_temp_qnt;
 int linha = 1;
 string codigo_gerado;
+bool usa_string = false;
 
 struct atributos
 {
@@ -35,7 +36,8 @@ map<string, string> tipos_temp;
 simbolo* buscar_simbolo(const string& nome);
 const simbolo* buscar_simbolo_const(const string& nome);
 
-bool is_tipo_valido(const string& t) { return t == "int" || t == "float" || t == "char" || t == "boolean"; }
+bool is_tipo_valido(const string& t) { return t == "int" || t == "float" || t == "char" || t == "boolean" || t == "string"; }
+bool is_string(const string& t) { return t == "string"; }
 string tipo_resultado_aritmetico(const string& a, const string& b)
 {
 	if (a == "float" || b == "float") return "float";
@@ -45,8 +47,11 @@ string tipo_para_c(const string& t) {
 	if (t == "boolean") return "int";
 	if (t == "char")    return "char";
 	if (t == "float")   return "float";
+	if (t == "string")  return "foca_string";
 	return "int";
 }
+
+string gen_string_runtime_support();
 
 int yylex(void);
 void yyerror(string);
@@ -57,8 +62,10 @@ void is_inicializado(string);
 void atribuir_temporario(string);
 string upcast_para_float(string label, string tipo, string &code);
 atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
+atributos gerar_op_soma(const atributos& expressao_esquerda, const atributos& expressao_direita);
 atributos gerar_op_relacional(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
 atributos gerar_op_logica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
+atributos gerar_op_concat(const atributos& expressao_esquerda, const atributos& expressao_direita);
 %}
 
 %token TK_NUM
@@ -68,8 +75,10 @@ atributos gerar_op_logica(const atributos& expressao_esquerda, const char* op, c
 %token TK_FLOAT
 %token TK_CHAR
 %token TK_BOOLEAN
+%token TK_STRING
 %token TK_BOOL_LIT
 %token TK_CHAR_LIT
+%token TK_STR_LIT
 %token TK_IGUAL
 %token TK_DIFERENTE
 %token TK_MENOR
@@ -95,16 +104,31 @@ atributos gerar_op_logica(const atributos& expressao_esquerda, const char* op, c
 
 S			: LISTA_COMANDOS
 			{
-				codigo_gerado = "/*Compilador FOCA*/\n"
-								"#include <stdio.h>\n"
-								"int main(void) {\n";
+				codigo_gerado.clear();
+				if (usa_string)
+				{
+					codigo_gerado += "/*Compilador FOCA*/\n";
+					codigo_gerado += "#include <stdio.h>\n";
+					codigo_gerado += "#include <stdlib.h>\n\n";
+					string rt = gen_string_runtime_support();
+					codigo_gerado += rt;
+					codigo_gerado += "int main(void) {\n";
+				}
+				else
+				{
+					codigo_gerado += "/*Compilador FOCA*/\n";
+					codigo_gerado += "#include <stdio.h>\n";
+					codigo_gerado += "int main(void) {\n";
+				}
 
-				codigo_gerado += gen_temp_declarations();
+				{
+					string decls = gen_temp_declarations();
+					codigo_gerado += decls;
+				}
 
 				codigo_gerado += $1.traducao;
 
-				codigo_gerado += "\treturn 0;"
-							"\n}\n";
+				codigo_gerado += "\treturn 0;\n}\n";
 			}
 			;
 
@@ -124,6 +148,11 @@ TIPO		: TK_INT
 			| TK_BOOLEAN
 			{
 				$$.tipo = "boolean";
+			}
+			| TK_STRING
+			{
+				usa_string = true;
+				$$.tipo = "string";
 			}
 			;
 
@@ -157,7 +186,7 @@ COMANDO		: TIPO TK_ID ';'
 
 E 			: E '+' E
 			{
-				$$ = gerar_op_aritmetica($1, "+", $3);
+				$$ = gerar_op_soma($1, $3);
 			}
 			| E '-' E
 			{
@@ -216,6 +245,8 @@ E 			: E '+' E
 				string target = $2.tipo;
 				if (!is_tipo_valido(target))
 					yyerror("Tipo inválido no cast");
+				if (is_string(target) || is_string($4.tipo))
+					yyerror("Cast envolvendo string não suportado");
 				$$.tipo = target;
 				$$.label = gentempcode(target);
 				$$.traducao = $4.traducao + "\t" + $$.label +
@@ -245,7 +276,13 @@ E 			: E '+' E
 					string label_expressao_direita = $3.label;
 					string codigo_expressao_direita = $3.traducao;
 
-					if (tipo_expressao_esquerda == "float" && tipo_expressao_direita == "int")
+					if (is_string(tipo_expressao_esquerda) || is_string(tipo_expressao_direita))
+					{
+						usa_string = true;
+						if (!is_string(tipo_expressao_esquerda) || !is_string(tipo_expressao_direita))
+							yyerror("Tipos incompatíveis: não é possível atribuir " + tipo_expressao_direita + " em " + tipo_expressao_esquerda);
+					}
+					else if (tipo_expressao_esquerda == "float" && tipo_expressao_direita == "int")
 					{
 						string tmp = gentempcode("float");
 						codigo_expressao_direita += "\t" + tmp + " = (float) " + label_expressao_direita + ";\n";
@@ -264,7 +301,10 @@ E 			: E '+' E
 					sym->inicializado = true;
 					$$.label = sym->nome_interno;
 					$$.tipo = tipo_expressao_esquerda;
-					$$.traducao = codigo_expressao_direita + "\t" + $$.label + " = " + label_expressao_direita + ";\n";
+					if (is_string(tipo_expressao_esquerda))
+						$$.traducao = codigo_expressao_direita + "\tfoca_str_copy(&" + $$.label + ", &" + label_expressao_direita + ");\n";
+					else
+						$$.traducao = codigo_expressao_direita + "\t" + $$.label + " = " + label_expressao_direita + ";\n";
 				}
 			}
 			| TK_NUM
@@ -290,6 +330,13 @@ E 			: E '+' E
 				$$.label = gentempcode("char");
 				$$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
 				$$.tipo = "char";
+			}
+			| TK_STR_LIT
+			{
+				usa_string = true;
+				$$.label = gentempcode("string");
+				$$.traducao = "\tfoca_str_from_lit(&" + $$.label + ", " + $1.label + ", (int)(sizeof(" + $1.label + ") - 1));\n";
+				$$.tipo = "string";
 			}
 			| TK_ID
 			{
@@ -366,6 +413,14 @@ bool is_boolean(const string& tipo)
 atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita)
 {
 	atributos out;
+	if (is_string(expressao_esquerda.tipo) || is_string(expressao_direita.tipo))
+	{
+		yyerror("Operação aritmética inválida com string");
+		out.tipo = "int";
+		out.label = "";
+		out.traducao = expressao_esquerda.traducao + expressao_direita.traducao;
+		return out;
+	}
 	string tipo_res = tipo_resultado_aritmetico(expressao_esquerda.tipo, expressao_direita.tipo);
 	string codigo_expressao_esquerda = expressao_esquerda.traducao;
 	string codigo_expressao_direita = expressao_direita.traducao;
@@ -385,9 +440,56 @@ atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* o
 	return out;
 }
 
+atributos gerar_op_concat(const atributos& expressao_esquerda, const atributos& expressao_direita)
+{
+	atributos out;
+	usa_string = true;
+	if (!is_string(expressao_esquerda.tipo) || !is_string(expressao_direita.tipo))
+	{
+		yyerror("Concatenação exige dois operandos string");
+		out.tipo = "string";
+		out.label = "";
+		out.traducao = expressao_esquerda.traducao + expressao_direita.traducao;
+		return out;
+	}
+	out.tipo = "string";
+	out.label = gentempcode("string");
+	out.traducao = expressao_esquerda.traducao + expressao_direita.traducao +
+		"\tfoca_str_concat(&" + out.label + ", &" + expressao_esquerda.label + ", &" + expressao_direita.label + ");\n";
+	return out;
+}
+
+atributos gerar_op_soma(const atributos& expressao_esquerda, const atributos& expressao_direita)
+{
+	if (is_string(expressao_esquerda.tipo) || is_string(expressao_direita.tipo))
+		return gerar_op_concat(expressao_esquerda, expressao_direita);
+	return gerar_op_aritmetica(expressao_esquerda, "+", expressao_direita);
+}
+
 atributos gerar_op_relacional(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita)
 {
 	atributos out;
+	if (is_string(expressao_esquerda.tipo) || is_string(expressao_direita.tipo))
+	{
+		usa_string = true;
+		string sop = op;
+		if (is_string(expressao_esquerda.tipo) && is_string(expressao_direita.tipo) && (sop == "==" || sop == "!="))
+		{
+			out.tipo = "boolean";
+			out.label = gentempcode("boolean");
+			out.traducao = expressao_esquerda.traducao + expressao_direita.traducao;
+			if (sop == "==")
+				out.traducao += "\t" + out.label + " = foca_str_eq(&" + expressao_esquerda.label + ", &" + expressao_direita.label + ");\n";
+			else
+				out.traducao += "\t" + out.label + " = !foca_str_eq(&" + expressao_esquerda.label + ", &" + expressao_direita.label + ");\n";
+			return out;
+		}
+		yyerror("Operador relacional inválido com string");
+		out.tipo = "boolean";
+		out.label = gentempcode("boolean");
+		out.traducao = expressao_esquerda.traducao + expressao_direita.traducao + "\t" + out.label + " = 0;\n";
+		return out;
+	}
 	string tipo_comum = tipo_resultado_aritmetico(expressao_esquerda.tipo, expressao_direita.tipo);
 	string codigo_expressao_esquerda = expressao_esquerda.traducao;
 	string codigo_expressao_direita = expressao_direita.traducao;
@@ -428,15 +530,90 @@ atributos gerar_op_logica(const atributos& expressao_esquerda, const char* op, c
 string gen_temp_declarations()
 {
 	string declarations;
+	string init_code;
 	for (int i = 1; i <= var_temp_qnt; i++){
 		string temp = "t" + to_string(i);
 		string tipo = tipos_temp[temp];
 		if (tipo.empty()) tipo = "int";
 		declarations += "\t" + tipo_para_c(tipo) + " " + temp + ";\n";
+		if (tipo == "string")
+			init_code += "\tfoca_str_init(&" + temp + ");\n";
 	}
 	if (var_temp_qnt > 0)
 		declarations += "\n";
+	if (!init_code.empty())
+		declarations += init_code + "\n";
 	return declarations;
+}
+
+string gen_string_runtime_support()
+{
+	return string(
+		"typedef struct {\n"
+		"\tchar *data;\n"
+		"\tint len;\n"
+		"\tint cap;\n"
+		"} foca_string;\n\n"
+		"static void foca_str_init(foca_string *s) {\n"
+		"\ts->data = NULL;\n"
+		"\ts->len = 0;\n"
+		"\ts->cap = 0;\n"
+		"}\n\n"
+		"static void foca_str_reserve(foca_string *s, int needed_cap) {\n"
+		"\tif (needed_cap <= s->cap) return;\n"
+		"\tint new_cap = s->cap ? s->cap : 64;\n"
+		"\twhile (new_cap < needed_cap) new_cap *= 2;\n"
+		"\tchar *p = (char*)realloc(s->data, (size_t)new_cap);\n"
+		"\tif (!p) {\n"
+		"\t\tfprintf(stderr, \"Erro: sem memória ao alocar string\\n\");\n"
+		"\t\texit(1);\n"
+		"\t}\n"
+		"\ts->data = p;\n"
+		"\ts->cap = new_cap;\n"
+		"\tif (s->len == 0) s->data[0] = '\\0';\n"
+		"}\n\n"
+		"static char* foca_strcopy_end(char *dst, const char *src) {\n"
+		"\twhile (*src) { *dst++ = *src++; }\n"
+		"\t*dst = '\\0';\n"
+		"\treturn dst;\n"
+		"}\n\n"
+		"static char* foca_strcat_end(char *dst_end, const char *src) {\n"
+		"\treturn foca_strcopy_end(dst_end, src);\n"
+		"}\n\n"
+		"static void foca_str_from_lit(foca_string *s, const char *lit, int lit_len) {\n"
+		"\tint needed = lit_len + 1;\n"
+		"\tfoca_str_reserve(s, needed);\n"
+		"\tchar *end = foca_strcopy_end(s->data, lit);\n"
+		"\t(void)end;\n"
+		"\ts->len = lit_len;\n"
+		"}\n\n"
+		"static void foca_str_copy(foca_string *dst, const foca_string *src) {\n"
+		"\tint needed = src->len + 1;\n"
+		"\tfoca_str_reserve(dst, needed);\n"
+		"\tchar *end = foca_strcopy_end(dst->data, src->data ? src->data : \"\");\n"
+		"\t(void)end;\n"
+		"\tdst->len = src->len;\n"
+		"}\n\n"
+		"static void foca_str_concat(foca_string *dst, const foca_string *a, const foca_string *b) {\n"
+		"\tint alen = a->len;\n"
+		"\tint blen = b->len;\n"
+		"\tint new_len = alen + blen;\n"
+		"\tfoca_str_reserve(dst, new_len + 1);\n"
+		"\tchar *end = foca_strcopy_end(dst->data, a->data ? a->data : \"\");\n"
+		"\tend = foca_strcat_end(end, b->data ? b->data : \"\");\n"
+		"\t(void)end;\n"
+		"\tdst->len = new_len;\n"
+		"}\n\n"
+		"static int foca_str_eq(const foca_string *a, const foca_string *b) {\n"
+		"\tif (a->len != b->len) return 0;\n"
+		"\tfor (int i = 0; i < a->len; i++) {\n"
+		"\t\tchar ca = a->data ? a->data[i] : 0;\n"
+		"\t\tchar cb = b->data ? b->data[i] : 0;\n"
+		"\t\tif (ca != cb) return 0;\n"
+		"\t}\n"
+		"\treturn 1;\n"
+		"}\n\n"
+	);
 }
 
 void is_declarado(string nome){
