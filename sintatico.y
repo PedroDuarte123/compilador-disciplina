@@ -76,6 +76,8 @@ atributos gerar_op_concat(const atributos& expressao_esquerda, const atributos& 
 %token TK_CHAR
 %token TK_BOOLEAN
 %token TK_STRING
+%token TK_PRINT
+%token TK_SCAN
 %token TK_BOOL_LIT
 %token TK_CHAR_LIT
 %token TK_STR_LIT
@@ -178,9 +180,69 @@ COMANDO		: TIPO TK_ID ';'
 				}
 				$$.traducao = "";
 			}
+			| TK_PRINT '(' TK_STR_LIT ')' ';'
+			{
+				$$.traducao = "\tprintf(" + $3.label + ");\n";
+			}
+			| TK_PRINT '(' TK_STR_LIT ',' ARGS ')' ';'
+			{
+				$$.traducao = $5.traducao + "\tprintf(" + $3.label + ", " + $5.label + ");\n";
+			}
+			| TK_SCAN TK_ID ';'
+			{
+				is_declarado($2.label);
+				simbolo* sym = buscar_simbolo($2.label);
+				if (!sym)
+				{
+					$$.traducao = "";
+				}
+				else
+				{
+					atribuir_temporario($2.label);
+					sym->inicializado = true;
+					if (is_string(sym->tipo))
+					{
+						usa_string = true;
+						$$.traducao = "\tfoca_str_scanline(&" + sym->nome_interno + ");\n";
+					}
+					else if (sym->tipo == "float")
+					{
+						$$.traducao = "\tscanf(\"%f\", &" + sym->nome_interno + ");\n";
+					}
+					else if (sym->tipo == "char")
+					{
+						$$.traducao = "\tscanf(\" %c\", &" + sym->nome_interno + ");\n";
+					}
+					else
+					{
+						/* int/boolean */
+						$$.traducao = "\tscanf(\"%d\", &" + sym->nome_interno + ");\n";
+					}
+				}
+			}
 			| E ';'
 			{
 				$$.traducao = $1.traducao;
+			}
+			;
+
+ARGS		: E
+			{
+				$$.traducao = $1.traducao;
+				if (is_string($1.tipo))
+					$$.label = "(" + $1.label + ".data ? " + $1.label + ".data : \"\")";
+				else
+					$$.label = $1.label;
+			}
+			| ARGS ',' E
+			{
+				$$.traducao = $1.traducao + $3.traducao;
+				string arg;
+				if (is_string($3.tipo))
+					arg = "(" + $3.label + ".data ? " + $3.label + ".data : \"\")";
+				else
+					arg = $3.label;
+				$$.label = $1.label + ", " + arg;
 			}
 			;
 
@@ -612,6 +674,23 @@ string gen_string_runtime_support()
 		"\t\tif (ca != cb) return 0;\n"
 		"\t}\n"
 		"\treturn 1;\n"
+		"}\n\n"
+		"static void foca_str_scanline(foca_string *s) {\n"
+		"\t/* Lê uma linha inteira (com espaços) de stdin. */\n"
+		"\ts->len = 0;\n"
+		"\tfoca_str_reserve(s, 1);\n"
+		"\tif (s->data) s->data[0] = '\\0';\n"
+		"\tint ch = getchar();\n"
+		"\twhile (ch == '\\n' || ch == '\\r') {\n"
+		"\t\tch = getchar();\n"
+		"\t}\n"
+		"\twhile (ch != EOF && ch != '\\n' && ch != '\\r') {\n"
+		"\t\tint needed = s->len + 2;\n"
+		"\t\tfoca_str_reserve(s, needed);\n"
+		"\t\ts->data[s->len++] = (char)ch;\n"
+		"\t\ts->data[s->len] = '\\0';\n"
+		"\t\tch = getchar();\n"
+		"\t}\n"
 		"}\n\n"
 	);
 }
