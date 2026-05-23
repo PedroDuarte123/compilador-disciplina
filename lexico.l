@@ -25,6 +25,8 @@ STRLIT \"([^\\\"\n]|\\.)*\"
 "char"      { return TK_CHAR; }
 "bool"      { return TK_BOOLEAN; }
 "string"    { return TK_STRING; }
+"print"     { return TK_PRINT; }
+"scan"      { return TK_SCAN; }
 "true"      { yylval.label = "1"; return TK_BOOL_LIT; }
 "false"     { yylval.label = "0"; return TK_BOOL_LIT; }
 "'"[^'\\\n]"'"   { yylval.label = yytext; return TK_CHAR_LIT; }
@@ -47,6 +49,7 @@ STRLIT \"([^\\\"\n]|\\.)*\"
 [)]         { return *yytext; }
 [=]         { return *yytext; }
 [;]         { return *yytext; }
+[,]         { return *yytext; }
 
 
 {NUM}		{ yylval.label = yytext; return TK_NUM; }

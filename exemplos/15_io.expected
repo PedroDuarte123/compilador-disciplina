@@ -1,0 +1,114 @@
+/*Compilador FOCA*/
+#include <stdio.h>
+#include <stdlib.h>
+
+typedef struct {
+	char *data;
+	int len;
+	int cap;
+} foca_string;
+
+static void foca_str_init(foca_string *s) {
+	s->data = NULL;
+	s->len = 0;
+	s->cap = 0;
+}
+
+static void foca_str_reserve(foca_string *s, int needed_cap) {
+	if (needed_cap <= s->cap) return;
+	int new_cap = s->cap ? s->cap : 64;
+	while (new_cap < needed_cap) new_cap *= 2;
+	char *p = (char*)realloc(s->data, (size_t)new_cap);
+	if (!p) {
+		fprintf(stderr, "Erro: sem memória ao alocar string\n");
+		exit(1);
+	}
+	s->data = p;
+	s->cap = new_cap;
+	if (s->len == 0) s->data[0] = '\0';
+}
+
+static char* foca_strcopy_end(char *dst, const char *src) {
+	while (*src) { *dst++ = *src++; }
+	*dst = '\0';
+	return dst;
+}
+
+static char* foca_strcat_end(char *dst_end, const char *src) {
+	return foca_strcopy_end(dst_end, src);
+}
+
+static void foca_str_from_lit(foca_string *s, const char *lit, int lit_len) {
+	int needed = lit_len + 1;
+	foca_str_reserve(s, needed);
+	char *end = foca_strcopy_end(s->data, lit);
+	(void)end;
+	s->len = lit_len;
+}
+
+static void foca_str_copy(foca_string *dst, const foca_string *src) {
+	int needed = src->len + 1;
+	foca_str_reserve(dst, needed);
+	char *end = foca_strcopy_end(dst->data, src->data ? src->data : "");
+	(void)end;
+	dst->len = src->len;
+}
+
+static void foca_str_concat(foca_string *dst, const foca_string *a, const foca_string *b) {
+	int alen = a->len;
+	int blen = b->len;
+	int new_len = alen + blen;
+	foca_str_reserve(dst, new_len + 1);
+	char *end = foca_strcopy_end(dst->data, a->data ? a->data : "");
+	end = foca_strcat_end(end, b->data ? b->data : "");
+	(void)end;
+	dst->len = new_len;
+}
+
+static int foca_str_eq(const foca_string *a, const foca_string *b) {
+	if (a->len != b->len) return 0;
+	for (int i = 0; i < a->len; i++) {
+		char ca = a->data ? a->data[i] : 0;
+		char cb = b->data ? b->data[i] : 0;
+		if (ca != cb) return 0;
+	}
+	return 1;
+}
+
+static void foca_str_scanline(foca_string *s) {
+	/* Lê uma linha inteira (com espaços) de stdin. */
+	s->len = 0;
+	foca_str_reserve(s, 1);
+	if (s->data) s->data[0] = '\0';
+	int ch = getchar();
+	while (ch == '\n' || ch == '\r') {
+		ch = getchar();
+	}
+	while (ch != EOF && ch != '\n' && ch != '\r') {
+		int needed = s->len + 2;
+		foca_str_reserve(s, needed);
+		s->data[s->len++] = (char)ch;
+		s->data[s->len] = '\0';
+		ch = getchar();
+	}
+}
+
+int main(void) {
+	int t1;
+	float t2;
+	char t3;
+	int t4;
+	foca_string t5;
+	float t6;
+
+	foca_str_init(&t5);
+
+	scanf("%d", &t1);
+	scanf("%f", &t2);
+	scanf(" %c", &t3);
+	scanf("%d", &t4);
+	foca_str_scanline(&t5);
+	t6 = t2;
+	printf("a=%d b=%f c=%c d=%d s=%s\n", t1, t6, t3, t4, (t5.data ? t5.data : ""));
+	return 0;
+}
