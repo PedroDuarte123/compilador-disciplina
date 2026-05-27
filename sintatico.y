@@ -2,6 +2,7 @@
 #include <iostream>
 #include <string>
 #include <map>
+#include <vector>
 
 using namespace std;
 
@@ -9,6 +10,7 @@ int var_temp_qnt;
 int linha = 1;
 string codigo_gerado;
 bool usa_string = false;
+int erros = 0;
 
 struct atributos
 {
@@ -30,8 +32,13 @@ struct simbolo{
 };
 
 #define YYSTYPE atributos
-map <string, simbolo> tabela_simbolos;
 map<string, string> tipos_temp;
+
+static vector< map<string, simbolo> > escopos;
+
+static void push_scope();
+static void pop_scope();
+static map<string, simbolo>& escopo_atual();
 
 simbolo* buscar_simbolo(const string& nome);
 const simbolo* buscar_simbolo_const(const string& nome);
@@ -170,15 +177,20 @@ LISTA_COMANDOS	: LISTA_COMANDOS COMANDO
 
 COMANDO		: TIPO TK_ID ';'
 			{
-				if (buscar_simbolo_const($2.label))
+				auto &cur = escopo_atual();
+				if (cur.find($2.label) != cur.end())
 				{
 					yyerror("Variável '" + $2.label + "' redeclarada");
 				}
 				else
 				{
-					tabela_simbolos.emplace($2.label, simbolo($2.label, $1.tipo, "", false));
+					cur.emplace($2.label, simbolo($2.label, $1.tipo, "", false));
 				}
 				$$.traducao = "";
+			}
+			| BLOCO
+			{
+				$$.traducao = $1.traducao;
 			}
 			| TK_PRINT '(' TK_STR_LIT ')' ';'
 			{
@@ -223,6 +235,18 @@ COMANDO		: TIPO TK_ID ';'
 			| E ';'
 			{
 				$$.traducao = $1.traducao;
+			}
+			;
+
+BLOCO		: '{'
+			{
+				push_scope();
+			}
+			LISTA_COMANDOS
+			'}'
+			{
+				pop_scope();
+				$$.traducao = $3.traducao;
 			}
 			;
 
@@ -731,32 +755,60 @@ void atribuir_temporario(string nome)
 
 simbolo* buscar_simbolo(const string& nome)
 {
-	auto it = tabela_simbolos.find(nome);
-	if (it == tabela_simbolos.end())
-		return nullptr;
-	return &it->second;
+	for (int i = (int)escopos.size() - 1; i >= 0; i--)
+	{
+		auto it = escopos[(size_t)i].find(nome);
+		if (it != escopos[(size_t)i].end())
+			return &it->second;
+	}
+	return nullptr;
 }
 
 const simbolo* buscar_simbolo_const(const string& nome)
 {
-	auto it = tabela_simbolos.find(nome);
-	if (it == tabela_simbolos.end())
-		return nullptr;
-	return &it->second;
+	for (int i = (int)escopos.size() - 1; i >= 0; i--)
+	{
+		auto it = escopos[(size_t)i].find(nome);
+		if (it != escopos[(size_t)i].end())
+			return &it->second;
+	}
+	return nullptr;
+}
+
+static map<string, simbolo>& escopo_atual()
+{
+	if (escopos.empty())
+		escopos.emplace_back();
+	return escopos.back();
+}
+
+static void push_scope()
+{
+	escopos.emplace_back();
+}
+
+static void pop_scope()
+{
+	if (!escopos.empty())
+		escopos.pop_back();
+	if (escopos.empty())
+		escopos.emplace_back();
 }
 
 int main(int argc, char* argv[])
 {
 	var_temp_qnt = 0;
-	tabela_simbolos.clear();
+	escopos.clear();
+	push_scope();
 	tipos_temp.clear();
-	if (yyparse() == 0)
+	int rc = yyparse();
+	if (rc == 0 && erros == 0)
 		cout << codigo_gerado;
-
-	return 0;
+	return (rc == 0 && erros == 0) ? 0 : 1;
 }
 
 void yyerror(string MSG)
 {
+	erros++;
 	cerr << "Erro na linha " << linha << ": " << MSG << endl;
 }
