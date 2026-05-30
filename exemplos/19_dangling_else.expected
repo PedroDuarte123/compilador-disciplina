@@ -16,16 +16,18 @@ int main(void) {
 	t4 = t3;
 	t5 = 1;
 	t6 = t2 == t5;
-	if (t6) {
+	if (!t6) goto L3;
 	t7 = 1;
 	t8 = t4 == t7;
-	if (t8) {
+	if (!t8) goto L1;
 	printf("if dentro verdadeiro\n");
-	} else {
+	goto L2;
+L1:
 	printf("if dentro falso\n");
-	}
-	} else {
+L2:
+	goto L4;
+L3:
 	printf("if fora falso\n");
-	}
+L4:
 	return 0;
 }
