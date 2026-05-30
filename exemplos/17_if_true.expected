@@ -1,0 +1,13 @@
+/*Compilador FOCA*/
+#include <stdio.h>
+int main(void) {
+int t1;
+int t2;
+
+t1 = 1;
+t2 = t1 > 0;
+if (t2) {
+printf("if verdadeiro\n");
+}
+return 0;
+}
