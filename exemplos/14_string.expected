@@ -14,65 +14,219 @@ static void foca_str_init(foca_string *s) {
 	s->cap = 0;
 }
 
+static const char* foca_str_cstr(const foca_string *s) {
+	const char *p;
+	int t1;
+	t1 = (s != NULL);
+	if (t1) goto L_cstr_check_data;
+	p = "";
+	goto L_cstr_end;
+L_cstr_check_data:
+	t1 = (s->data != NULL);
+	if (t1) goto L_cstr_ok;
+	p = "";
+	goto L_cstr_end;
+L_cstr_ok:
+	p = s->data;
+L_cstr_end:
+	return p;
+}
+
+/* Runtime em estilo 3-endereços (labels + goto; sem for/while/else/?:). */
 static void foca_str_reserve(foca_string *s, int needed_cap) {
-	if (needed_cap <= s->cap) return;
-	int new_cap = s->cap ? s->cap : 64;
-	while (new_cap < needed_cap) new_cap *= 2;
-	char *p = (char*)realloc(s->data, (size_t)new_cap);
-	if (!p) {
-		fprintf(stderr, "Erro: sem memória ao alocar string\n");
-		exit(1);
-	}
+	int new_cap;
+	char *p;
+	int t1;
+	t1 = (needed_cap <= s->cap);
+	if (t1) goto L_reserve_end;
+	t1 = (s->cap != 0);
+	if (t1) goto L_reserve_has_cap;
+	new_cap = 64;
+	goto L_reserve_loop_check;
+L_reserve_has_cap:
+	new_cap = s->cap;
+L_reserve_loop_check:
+	t1 = (new_cap >= needed_cap);
+	if (t1) goto L_reserve_realloc;
+	new_cap = new_cap * 2;
+	goto L_reserve_loop_check;
+L_reserve_realloc:
+	p = (char*)realloc(s->data, (size_t)new_cap);
+	t1 = (p != NULL);
+	if (t1) goto L_reserve_ok;
+	fprintf(stderr, "Erro: sem memória ao alocar string\n");
+	exit(1);
+L_reserve_ok:
 	s->data = p;
 	s->cap = new_cap;
-	if (s->len == 0) s->data[0] = '\0';
+	t1 = (s->len != 0);
+	if (t1) goto L_reserve_end;
+	t1 = (s->data == NULL);
+	if (t1) goto L_reserve_end;
+	s->data[0] = '\0';
+L_reserve_end:
+	return;
 }
 
 static char* foca_strcopy_end(char *dst, const char *src) {
-	while (*src) { *dst++ = *src++; }
-	*dst = '\0';
-	return dst;
-}
-
-static char* foca_strcat_end(char *dst_end, const char *src) {
-	return foca_strcopy_end(dst_end, src);
+	char *dp;
+	const char *sp;
+	char ch;
+	int t1;
+	dp = dst;
+	sp = src;
+L_copy_loop:
+	ch = *sp;
+	t1 = (ch == '\0');
+	if (t1) goto L_copy_end;
+	*dp = ch;
+	dp = dp + 1;
+	sp = sp + 1;
+	goto L_copy_loop;
+L_copy_end:
+	*dp = '\0';
+	return dp;
 }
 
 static void foca_str_from_lit(foca_string *s, const char *lit, int lit_len) {
-	int needed = lit_len + 1;
+	int needed;
+	char *end;
+	needed = lit_len + 1;
 	foca_str_reserve(s, needed);
-	char *end = foca_strcopy_end(s->data, lit);
+	end = foca_strcopy_end(s->data, lit);
 	(void)end;
 	s->len = lit_len;
+	return;
 }
 
 static void foca_str_copy(foca_string *dst, const foca_string *src) {
-	int needed = src->len + 1;
+	int needed;
+	const char *sp;
+	char *end;
+	int t1;
+	needed = src->len + 1;
 	foca_str_reserve(dst, needed);
-	char *end = foca_strcopy_end(dst->data, src->data ? src->data : "");
+	t1 = (src->data != NULL);
+	if (t1) goto L_copy_src_ok;
+	sp = "";
+	goto L_copy_do;
+L_copy_src_ok:
+	sp = src->data;
+L_copy_do:
+	end = foca_strcopy_end(dst->data, sp);
 	(void)end;
 	dst->len = src->len;
+	return;
 }
 
 static void foca_str_concat(foca_string *dst, const foca_string *a, const foca_string *b) {
-	int alen = a->len;
-	int blen = b->len;
-	int new_len = alen + blen;
+	int alen;
+	int blen;
+	int new_len;
+	const char *ap;
+	const char *bp;
+	char *end;
+	int t1;
+	alen = a->len;
+	blen = b->len;
+	new_len = alen + blen;
 	foca_str_reserve(dst, new_len + 1);
-	char *end = foca_strcopy_end(dst->data, a->data ? a->data : "");
-	end = foca_strcat_end(end, b->data ? b->data : "");
+	t1 = (a->data != NULL);
+	if (t1) goto L_cat_a_ok;
+	ap = "";
+	goto L_cat_a_done;
+L_cat_a_ok:
+	ap = a->data;
+L_cat_a_done:
+	t1 = (b->data != NULL);
+	if (t1) goto L_cat_b_ok;
+	bp = "";
+	goto L_cat_b_done;
+L_cat_b_ok:
+	bp = b->data;
+L_cat_b_done:
+	end = foca_strcopy_end(dst->data, ap);
+	end = foca_strcopy_end(end, bp);
 	(void)end;
 	dst->len = new_len;
+	return;
 }
 
 static int foca_str_eq(const foca_string *a, const foca_string *b) {
-	if (a->len != b->len) return 0;
-	for (int i = 0; i < a->len; i++) {
-		char ca = a->data ? a->data[i] : 0;
-		char cb = b->data ? b->data[i] : 0;
-		if (ca != cb) return 0;
-	}
+	int i;
+	char ca;
+	char cb;
+	int t1;
+	t1 = (a->len == b->len);
+	if (t1) goto L_eq_loop_init;
+	return 0;
+L_eq_loop_init:
+	i = 0;
+L_eq_loop_check:
+	t1 = (i < a->len);
+	if (t1) goto L_eq_load_a;
 	return 1;
+L_eq_load_a:
+	t1 = (a->data != NULL);
+	if (t1) goto L_eq_a_ok;
+	ca = 0;
+	goto L_eq_load_b;
+L_eq_a_ok:
+	ca = a->data[i];
+L_eq_load_b:
+	t1 = (b->data != NULL);
+	if (t1) goto L_eq_b_ok;
+	cb = 0;
+	goto L_eq_cmp;
+L_eq_b_ok:
+	cb = b->data[i];
+L_eq_cmp:
+	t1 = (ca == cb);
+	if (t1) goto L_eq_inc;
+	return 0;
+L_eq_inc:
+	i = i + 1;
+	goto L_eq_loop_check;
+}
+
+static void foca_str_scanline(foca_string *s) {
+	int ch;
+	int needed;
+	int t1;
+	s->len = 0;
+	foca_str_reserve(s, 1);
+	t1 = (s->data == NULL);
+	if (t1) goto L_scan_read_first;
+	s->data[0] = '\0';
+L_scan_read_first:
+	ch = getchar();
+L_scan_skip_newline:
+	t1 = (ch == '\n');
+	if (t1) goto L_scan_get_next_skip;
+	t1 = (ch == '\r');
+	if (t1) goto L_scan_get_next_skip;
+	goto L_scan_loop_check;
+L_scan_get_next_skip:
+	ch = getchar();
+	goto L_scan_skip_newline;
+L_scan_loop_check:
+	t1 = (ch == EOF);
+	if (t1) goto L_scan_done;
+	t1 = (ch == '\n');
+	if (t1) goto L_scan_done;
+	t1 = (ch == '\r');
+	if (t1) goto L_scan_done;
+	needed = s->len + 2;
+	foca_str_reserve(s, needed);
+	t1 = (s->data == NULL);
+	if (t1) goto L_scan_done;
+	s->data[s->len] = (char)ch;
+	s->len = s->len + 1;
+	s->data[s->len] = '\0';
+	ch = getchar();
+	goto L_scan_loop_check;
+L_scan_done:
+	return;
 }
 
 int main(void) {
@@ -84,9 +238,6 @@ int main(void) {
 	foca_string t6;
 	foca_string t7;
 	foca_string t8;
-	foca_string t9;
-	int t10;
-	int t11;
 
 	foca_str_init(&t1);
 	foca_str_init(&t2);
@@ -96,7 +247,6 @@ int main(void) {
 	foca_str_init(&t6);
 	foca_str_init(&t7);
 	foca_str_init(&t8);
-	foca_str_init(&t9);
 
 	foca_str_from_lit(&t1, "ola", (int)(sizeof("ola") - 1));
 	foca_str_copy(&t2, &t1);
@@ -106,8 +256,6 @@ int main(void) {
 	foca_str_from_lit(&t6, "!", (int)(sizeof("!") - 1));
 	foca_str_concat(&t7, &t5, &t6);
 	foca_str_copy(&t8, &t7);
-	foca_str_from_lit(&t9, "ola mundo!", (int)(sizeof("ola mundo!") - 1));
-	t10 = foca_str_eq(&t8, &t9);
-	t11 = t10;
+	printf("%s", foca_str_cstr(&t8));
 	return 0;
 }

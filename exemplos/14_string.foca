@@ -6,5 +6,4 @@ A = "ola";
 B = " mundo";
 C = A + B + "!";
 
-bool R;
-R = C == "ola mundo!";
+print("%s", C);
