@@ -11,6 +11,7 @@ int linha = 1;
 string codigo_gerado;
 bool usa_string = false;
 int erros = 0;
+int label_qnt = 0;
 
 struct atributos
 {
@@ -73,6 +74,7 @@ atributos gerar_op_soma(const atributos& expressao_esquerda, const atributos& ex
 atributos gerar_op_relacional(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
 atributos gerar_op_logica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
 atributos gerar_op_concat(const atributos& expressao_esquerda, const atributos& expressao_direita);
+string genlabel();
 %}
 
 %token TK_NUM
@@ -196,13 +198,29 @@ COMANDO		: TIPO TK_ID ';'
 			{									//	ELSE vai sempre casar com o IF mais próximo	(shift)				
 				if ($3.tipo != "boolean")
 					yyerror("Condição do if deve ser booleana");
-				$$.traducao = $3.traducao + "\tif (" + $3.label + ") {\n" + $5.traducao + "\t}\n";
+				{
+					string Lifelse = genlabel(); // Label fim de bloco if
+					$$.traducao = $3.traducao
+						+ "\tif (!" + $3.label + ") goto " + Lifelse + ";\n" // nega condição e gera go to para Lifelse (fim do if-else)
+						+ $5.traducao
+						+ Lifelse + ":\n";
+				}
 			}
 			| TK_IF '(' E ')' COMANDO TK_ELSE COMANDO
 			{
 				if ($3.tipo != "boolean")
 					yyerror("Condição do if deve ser booleana");
-				$$.traducao = $3.traducao + "\tif (" + $3.label + ") {\n" + $5.traducao + "\t} else {\n" + $7.traducao + "\t}\n";
+				{
+					string Lelse = genlabel(); // Label início do bloco else
+					string Lifelse = genlabel(); // Label fim de bloco if-else
+					$$.traducao = $3.traducao
+						+ "\tif (!" + $3.label + ") goto " + Lelse + ";\n"
+						+ $5.traducao
+						+ "\tgoto " + Lifelse + ";\n"
+						+ Lelse + ":\n"
+						+ $7.traducao
+						+ Lifelse + ":\n";
+				}
 			}
 			| BLOCO
 			{
@@ -733,6 +751,12 @@ string gen_string_runtime_support()
 		"\t}\n"
 		"}\n\n"
 	);
+}
+
+string genlabel() // gera Labels para o Goto
+{
+	label_qnt++;
+	return "L" + to_string(label_qnt);
 }
 
 void is_declarado(string nome){
