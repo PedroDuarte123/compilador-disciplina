@@ -287,8 +287,6 @@ BLOCO		: '{'
 ARGS		: E
 			{
 				$$.traducao = $1.traducao;
-				if (is_string($1.tipo))
-					$$.label = "(" + $1.label + ".data ? " + $1.label + ".data : \"\")";
 				if (is_string($1.tipo)) {
 					usa_string = true;
 					$$.label = "foca_str_cstr(&" + $1.label + ")";
@@ -300,8 +298,6 @@ ARGS		: E
 			{
 				$$.traducao = $1.traducao + $3.traducao;
 				string arg;
-				if (is_string($3.tipo))
-					arg = "(" + $3.label + ".data ? " + $3.label + ".data : \"\")";
 				if (is_string($3.tipo)) {
 					usa_string = true;
 					arg = "foca_str_cstr(&" + $3.label + ")";
@@ -893,23 +889,6 @@ string gen_string_runtime_support()
 		"\tgoto L_scan_loop_check;\n"
 		"L_scan_done:\n"
 		"\treturn;\n"
-		"}\n\n"
-		"static void foca_str_scanline(foca_string *s) {\n"
-		"\t/* Lê uma linha inteira (com espaços) de stdin. */\n"
-		"\ts->len = 0;\n"
-		"\tfoca_str_reserve(s, 1);\n"
-		"\tif (s->data) s->data[0] = '\\0';\n"
-		"\tint ch = getchar();\n"
-		"\twhile (ch == '\\n' || ch == '\\r') {\n"
-		"\t\tch = getchar();\n"
-		"\t}\n"
-		"\twhile (ch != EOF && ch != '\\n' && ch != '\\r') {\n"
-		"\t\tint needed = s->len + 2;\n"
-		"\t\tfoca_str_reserve(s, needed);\n"
-		"\t\ts->data[s->len++] = (char)ch;\n"
-		"\t\ts->data[s->len] = '\\0';\n"
-		"\t\tch = getchar();\n"
-		"\t}\n"
 		"}\n\n"
 	);
 }
