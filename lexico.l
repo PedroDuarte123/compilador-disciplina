@@ -16,6 +16,7 @@ STRLIT \"([^\\\"\n]|\\.)*\"
 
 %%
 
+"\r"        {}
 "\n"		{ linha++; }
 
 {DELIM} 	{}
@@ -27,6 +28,8 @@ STRLIT \"([^\\\"\n]|\\.)*\"
 "string"    { return TK_STRING; }
 "print"     { return TK_PRINT; }
 "scan"      { return TK_SCAN; }
+"if"        { return TK_IF; }
+"else"      { return TK_ELSE; }
 "true"      { yylval.label = "1"; return TK_BOOL_LIT; }
 "false"     { yylval.label = "0"; return TK_BOOL_LIT; }
 "'"[^'\\\n]"'"   { yylval.label = yytext; return TK_CHAR_LIT; }

@@ -1,0 +1,13 @@
+int a;
+int b;
+
+a = 1;
+b = 0;
+
+if (a == 1)
+	if (b == 1)
+		print("if dentro verdadeiro\n");
+	else
+		print("if dentro falso\n");
+else
+	print("if fora falso\n");

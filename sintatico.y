@@ -85,6 +85,8 @@ atributos gerar_op_concat(const atributos& expressao_esquerda, const atributos& 
 %token TK_STRING
 %token TK_PRINT
 %token TK_SCAN
+%token TK_IF
+%token TK_ELSE
 %token TK_BOOL_LIT
 %token TK_CHAR_LIT
 %token TK_STR_LIT
@@ -107,6 +109,8 @@ atributos gerar_op_concat(const atributos& expressao_esquerda, const atributos& 
 %left '+' '-'
 %left '*' '/'
 %right TK_NOT
+%nonassoc TK_IFAKE // token fake para resolver ambiguidade do else (declarado antes, tem precedência menor)
+%nonassoc TK_ELSE // precedência maior (declarado depois) -> resolver dangling else
 
 
 %%
@@ -187,6 +191,18 @@ COMANDO		: TIPO TK_ID ';'
 					cur.emplace($2.label, simbolo($2.label, $1.tipo, "", false));
 				}
 				$$.traducao = "";
+			}
+			| TK_IF '(' E ')' COMANDO %prec TK_IFAKE // %prec usa a precedencia (menor) do token fake TK_IFAKE (evita ambiguidade do else)
+			{									//	ELSE vai sempre casar com o IF mais próximo	(shift)				
+				if ($3.tipo != "boolean")
+					yyerror("Condição do if deve ser booleana");
+				$$.traducao = $3.traducao + "\tif (" + $3.label + ") {\n" + $5.traducao + "\t}\n";
+			}
+			| TK_IF '(' E ')' COMANDO TK_ELSE COMANDO
+			{
+				if ($3.tipo != "boolean")
+					yyerror("Condição do if deve ser booleana");
+				$$.traducao = $3.traducao + "\tif (" + $3.label + ") {\n" + $5.traducao + "\t} else {\n" + $7.traducao + "\t}\n";
 			}
 			| BLOCO
 			{
