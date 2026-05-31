@@ -13,6 +13,15 @@ bool usa_string = false;
 int erros = 0;
 int label_qnt = 0;
 
+struct switch_context
+{
+	string switch_label;
+	string expr_tipo; // tipo da exp q esta no switch
+	string break_label;  // destino dos breaks
+};
+
+static vector<switch_context> switch_stack; // pilha de switches
+
 struct atributos
 {
 	string label;
@@ -69,6 +78,10 @@ void is_declarado(string);
 void is_inicializado(string);
 void atribuir_temporario(string);
 string upcast_para_float(string label, string tipo, string &code);
+void enter_switch(const atributos& expr); // funções para suportar switches aninhados (pilha de switches)
+void exit_switch(); //
+const switch_context& current_switch(); //
+bool is_switch_tipo_valido(const string& tipo);
 atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
 atributos gerar_op_soma(const atributos& expressao_esquerda, const atributos& expressao_direita);
 atributos gerar_op_relacional(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
@@ -89,6 +102,10 @@ string genlabel();
 %token TK_SCAN
 %token TK_IF
 %token TK_ELSE
+%token TK_BREAK
+%token TK_SWITCH
+%token TK_CASE
+%token TK_DEFAULT
 %token TK_BOOL_LIT
 %token TK_CHAR_LIT
 %token TK_STR_LIT
@@ -222,6 +239,25 @@ COMANDO		: TIPO TK_ID ';'
 						+ Lifelse + ":\n";
 				}
 			}
+				| TK_BREAK ';'
+				{
+					if (switch_stack.empty())
+						yyerror("'break' fora de switch");
+					else
+						$$.traducao = "\tgoto " + current_switch().break_label + ";\n"; // gera goto Label do break do switch atual
+				}
+				| TK_SWITCH '(' E ')' 
+					{
+						if (!is_switch_tipo_valido($3.tipo))
+							yyerror("Switch deve usar expressão int, char ou boolean");
+						enter_switch($3); // cria switch na pilha
+					}
+					'{' SWITCH_CLAUSES '}'
+					{
+						const switch_context& context = current_switch();
+						$$.traducao = $3.traducao + $7.traducao + context.break_label + ":\n";
+						exit_switch(); // remove da pilha após finalizar switch
+					}
 			| BLOCO
 			{
 				$$.traducao = $1.traducao;
@@ -269,6 +305,39 @@ COMANDO		: TIPO TK_ID ';'
 			| E ';'
 			{
 				$$.traducao = $1.traducao;
+			}
+			;
+
+SWITCH_CLAUSES	: TK_CASE E ':' COMANDO SWITCH_CLAUSES // trata as clausulas
+			{
+				const switch_context& context = current_switch();
+				if ($2.tipo != context.expr_tipo) // clausula precisa ter o mesmo tipo da exp do switch
+					yyerror("Case incompatível com a expressão do switch");
+				string Lcase = genlabel();
+				string next_label;
+				if ($5.label.empty())
+					next_label = context.break_label; // se nao houver prox case, ele vai pro break (finaliza)
+				else
+					next_label = $5.label; // se houver prox case, ele vai pra ele (recursivamente)
+				$$.label = Lcase;
+				$$.traducao = Lcase + ":\n"
+					+ $2.traducao
+					+ "\tif (" + context.switch_label + " != " + $2.label + ") goto " + next_label + ";\n"
+					+ $4.traducao
+					+ $5.traducao;
+			}
+			| TK_DEFAULT ':' COMANDO
+			{
+				const switch_context& context = current_switch();
+				string Ldefault = genlabel();
+				$$.label = Ldefault;
+				$$.traducao = Ldefault + ":\n"
+					+ $3.traducao;
+			}
+			| /* vazio */ // usa quando nao ha outros cases ou default
+			{
+				$$.label = "";
+				$$.traducao = "";
 			}
 			;
 
@@ -532,6 +601,34 @@ void ensure_float_temp_for_literal(string &label, string &code, const atributos 
 bool is_boolean(const string& tipo)
 {
 	return tipo == "boolean";
+}
+
+bool is_switch_tipo_valido(const string& tipo)
+{
+	return tipo == "int" || tipo == "char" || tipo == "boolean";
+}
+
+void enter_switch(const atributos& expr) // Adiciona um novo contexto de switch à pilha
+{
+    switch_context context;
+	context.switch_label = expr.label; // resultado da expressão do switch
+	context.expr_tipo = expr.tipo;         // tipo da expressão
+    context.break_label = genlabel();        // destino dos breaks
+
+    switch_stack.push_back(context);
+}
+
+
+void exit_switch() // Remove o switch atual da pilha
+{
+    if (!switch_stack.empty())
+        switch_stack.pop_back();
+}
+
+
+const switch_context& current_switch() // Retorna o contexto do switch atual/ switch que está no topo da pilha
+{
+    return switch_stack.back();
 }
 
 atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita)

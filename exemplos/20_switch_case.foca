@@ -1,0 +1,17 @@
+int x;
+x = 2;
+
+switch (x) {
+	case 1: {
+		print("um\n");
+		break;
+	}
+	case 2: {
+		print("dois\n");
+		break;
+	}
+	case 3: {
+		print("tres\n");
+		break;
+	}
+}
