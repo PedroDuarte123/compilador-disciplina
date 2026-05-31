@@ -1033,7 +1033,6 @@ string gen_string_runtime_support()
 		"L_cstr_end:\n"
 		"\treturn p;\n"
 		"}\n\n"
-		"/* Runtime em estilo 3-endereços (labels + goto; sem for/while/else/?:). */\n"
 		"static void foca_str_reserve(foca_string *s, int needed_cap) {\n"
 		"\tint new_cap;\n"
 		"\tchar *p;\n"
