@@ -1,0 +1,10 @@
+int x;
+int i;
+x = 0;
+i = 0;
+do {
+	 i = i + 1;
+	 if (i == 2) continue;
+	 x = x + i;
+} while (i < 4);
+print("x = %d i = %d", x, i);

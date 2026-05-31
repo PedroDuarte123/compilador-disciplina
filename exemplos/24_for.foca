@@ -1,0 +1,7 @@
+int x;
+x = 0;
+for (int i = 0; i < 4; i = i + 1) {
+	 if (i == 2) continue;
+	 x = x + i;
+}
+print("x = %d", x);

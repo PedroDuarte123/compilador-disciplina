@@ -22,11 +22,21 @@ struct switch_context
 
 static vector<switch_context> switch_stack; // pilha de switches
 
+struct loop_context
+{
+    string break_label;
+    string continue_label;
+};
+
+static vector<loop_context> loop_stack; // pilha de loops
+
 struct atributos
 {
 	string label;
 	string traducao;
 	string tipo;
+	string extra;
+	string extra2;
 };
 
 struct simbolo{
@@ -82,6 +92,9 @@ void enter_switch(const atributos& expr); // funções para suportar switches an
 void exit_switch(); //
 const switch_context& current_switch(); //
 bool is_switch_tipo_valido(const string& tipo);
+void enter_loop(const string& break_label, const string& continue_label);
+void exit_loop();
+const loop_context& current_loop();
 atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
 atributos gerar_op_soma(const atributos& expressao_esquerda, const atributos& expressao_direita);
 atributos gerar_op_relacional(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
@@ -102,6 +115,10 @@ string genlabel();
 %token TK_SCAN
 %token TK_IF
 %token TK_ELSE
+%token TK_WHILE
+%token TK_DO
+%token TK_FOR
+%token TK_CONTINUE
 %token TK_BREAK
 %token TK_SWITCH
 %token TK_CASE
@@ -239,13 +256,48 @@ COMANDO		: TIPO TK_ID ';'
 						+ Lifelse + ":\n";
 				}
 			}
-				| TK_BREAK ';'
-				{
-					if (switch_stack.empty())
-						yyerror("'break' fora de switch");
-					else
-						$$.traducao = "\tgoto " + current_switch().break_label + ";\n"; // gera goto Label do break do switch atual
-				}
+			| TK_BREAK ';'
+			{
+				if (!loop_stack.empty())
+					$$.traducao = "\tgoto " + current_loop().break_label + ";\n"; // break em loop
+				else if (!switch_stack.empty())
+					$$.traducao = "\tgoto " + current_switch().break_label + ";\n"; // break em switch
+				else
+					yyerror("'break' fora de loop ou switch");
+			}
+		| TK_CONTINUE ';'
+		{
+			if (loop_stack.empty())
+				yyerror("'continue' fora de loop");
+			else
+				$$.traducao = "\tgoto " + current_loop().continue_label + ";\n";
+		}
+		| WHILE_HEAD COMANDO
+    	{
+        $$.traducao = $1.label + ":\n"
+            + $1.traducao
+            + "\tif (!" + $1.extra + ") goto " + $1.tipo + ";\n"  // ← $1.extra em vez de nada
+            + $2.traducao
+            + "\tgoto " + $1.label + ";\n"
+            + $1.tipo + ":\n";
+       		 exit_loop();
+   		 }
+		| DO_HEAD COMANDO TK_WHILE '(' E ')' ';'
+		{
+			if ($5.tipo != "boolean")
+				yyerror("Condição do do/while deve ser booleana");
+			{
+				$$.traducao = $1.traducao + $1.label + ":\n" + $2.traducao + $1.tipo + ":\n" + $5.traducao
+					+ "\tif (" + $5.label + ") goto " + $1.label + ";\n"
+					+ $1.extra + ":\n";
+				exit_loop();
+			}
+		}
+		| FOR_HEAD COMANDO
+		{
+			$$.traducao = $1.traducao + $2.traducao + $1.tipo + ":\n" + $1.extra2 + "\tgoto " + $1.label + ";\n" + $1.extra + ":\n";
+			exit_loop();
+		}
 				| TK_SWITCH '(' E ')' 
 					{
 						if (!is_switch_tipo_valido($3.tipo))
@@ -323,7 +375,7 @@ SWITCH_CLAUSES	: TK_CASE E ':' COMANDO SWITCH_CLAUSES // trata as clausulas
 				$$.traducao = Lcase + ":\n"
 					+ $2.traducao
 					+ "\tif (" + context.switch_label + " != " + $2.label + ") goto " + next_label + ";\n"
-					+ $4.traducao
+					+ $3.traducao
 					+ $5.traducao;
 			}
 			| TK_DEFAULT ':' COMANDO
@@ -376,6 +428,131 @@ ARGS		: E
 				$$.label = $1.label + ", " + arg;
 			}
 			;
+
+FOR_INIT	: E
+			{
+				$$ = $1;
+			}
+		| TIPO TK_ID '=' E
+		{
+			auto &cur = escopo_atual();
+			if (cur.find($2.label) != cur.end())
+			{ yyerror("Vari�vel '" + $2.label + "' redeclarada"); }
+			else
+			{ cur.emplace($2.label, simbolo($2.label, $1.tipo, "", false)); }
+			
+			simbolo* sym = buscar_simbolo($2.label);
+			if (!sym)
+			{
+				$$.label = "";
+				$$.traducao = $4.traducao;
+				$$.tipo = $4.tipo;
+			}
+			else
+			{
+				atribuir_temporario($2.label);
+				string tipo_var = sym->tipo;
+				string tipo_expr = $4.tipo;
+				string label_expr = $4.label;
+				string codigo_expr = $4.traducao;
+				
+				if (tipo_var == "float" && tipo_expr == "int")
+				{
+					string tmp = gentempcode("float");
+					codigo_expr += "\t" + tmp + " = (float) " + label_expr + ";\n";
+					label_expr = tmp;
+					tipo_expr = "float";
+				}
+				else if (tipo_var == "int" && tipo_expr == "float")
+				{
+					yyerror("Conversão explícita necessária para atribuir float em int");
+				}
+				else if (tipo_var != tipo_expr)
+				{
+					yyerror("Tipos incompatíveis na inicialização do for");
+				}
+				
+				sym->inicializado = true;
+				$$.label = sym->nome_interno;
+				$$.tipo = tipo_var;
+				$$.traducao = codigo_expr + "\t" + $$.label + " = " + label_expr + ";\n";
+			}
+		}
+		| TIPO TK_ID
+		{
+			auto &cur = escopo_atual();
+			if (cur.find($2.label) != cur.end())
+			{ yyerror("Vari�vel '" + $2.label + "' redeclarada"); }
+			else
+			{ cur.emplace($2.label, simbolo($2.label, $1.tipo, "", false)); }
+			$$.traducao = "";
+			$$.label = "";
+			$$.tipo = "int";
+		}
+FOR_COND	: E
+			{
+				$$ = $1;
+			}
+			| /* vazio */
+			{
+				$$.traducao = "";
+				$$.label = "";
+				$$.tipo = "boolean"; // empty cond -> treated as true
+			}
+
+FOR_POST	: E
+			{
+				$$ = $1;
+			}
+			| /* vazio */
+			{
+				$$.traducao = "";
+				$$.label = "";
+				$$.tipo = "int";
+			}
+
+
+WHILE_HEAD	: TK_WHILE '(' E ')'
+		{
+			if ($3.tipo != "boolean")
+				yyerror("Condição do while deve ser booleana");
+			string Lbegin = genlabel();
+			string Lend = genlabel();
+			enter_loop(Lend, Lbegin);
+			$$.label = Lbegin;
+			$$.traducao = $3.traducao;
+			$$.tipo = Lend;
+			$$.extra = $3.label; // condição do while (usada para o if dentro do bloco)
+		}
+
+DO_HEAD	: TK_DO
+		{
+			string Lbegin = genlabel();
+			string Lcont = genlabel();
+			string Lend = genlabel();
+			enter_loop(Lend, Lcont);
+			$$.label = Lbegin;
+			$$.tipo = Lcont;
+			$$.extra = Lend;
+			$$.traducao = "";
+		}
+
+FOR_HEAD	: TK_FOR '(' FOR_INIT ';' FOR_COND ';' FOR_POST ')'
+		{
+			string Lbegin = genlabel();
+			string Lpost = genlabel();
+			string Lend = genlabel();
+			enter_loop(Lend, Lpost);
+			$$.label = Lbegin;
+			$$.tipo = Lpost;
+			$$.extra = Lend;
+			$$.extra2 = $7.traducao;
+			$$.traducao = $3.traducao + Lbegin + ":\n";
+			if (!$5.label.empty())
+				$$.traducao += $5.traducao + "\tif (!" + $5.label + ") goto " + Lend + ";\n";
+			else
+				$$.traducao += $5.traducao;
+		}
 
 E 			: E '+' E
 			{
@@ -442,7 +619,7 @@ E 			: E '+' E
 					yyerror("Cast envolvendo string não suportado");
 				$$.tipo = target;
 				$$.label = gentempcode(target);
-				$$.traducao = $4.traducao + "\t" + $$.label +
+				$$.traducao = $3.traducao + "\t" + $$.label +
 					" = (" + target + ") " + $4.label + ";\n";
 			}
 			| '(' E ')'
@@ -629,6 +806,25 @@ void exit_switch() // Remove o switch atual da pilha
 const switch_context& current_switch() // Retorna o contexto do switch atual/ switch que está no topo da pilha
 {
     return switch_stack.back();
+}
+
+void enter_loop(const string& break_label, const string& continue_label)
+{
+	loop_context ctx;
+	ctx.break_label = break_label;
+	ctx.continue_label = continue_label;
+	loop_stack.push_back(ctx);
+}
+
+void exit_loop()
+{
+	if (!loop_stack.empty())
+		loop_stack.pop_back();
+}
+
+const loop_context& current_loop()
+{
+	return loop_stack.back();
 }
 
 atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita)
