@@ -30,10 +30,14 @@ STRLIT \"([^\\\"\n]|\\.)*\"
 "scan"      { return TK_SCAN; }
 "if"        { return TK_IF; }
 "else"      { return TK_ELSE; }
+"while"     { return TK_WHILE; }
+"do"        { return TK_DO; }
 "break"     { return TK_BREAK; }
 "switch"    { return TK_SWITCH; }
 "case"      { return TK_CASE; }
 "default"   { return TK_DEFAULT; }
+"for"       { return TK_FOR; }
+"continue"  { return TK_CONTINUE; }
 "true"      { yylval.label = "1"; return TK_BOOL_LIT; }
 "false"     { yylval.label = "0"; return TK_BOOL_LIT; }
 "'"[^'\\\n]"'"   { yylval.label = yytext; return TK_CHAR_LIT; }

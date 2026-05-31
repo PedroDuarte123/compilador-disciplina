@@ -4,7 +4,7 @@ x = 1;
 {
 	int x;
 	x = 2;
-	print("x interno=%d\n", x);
+	print("inner x=%d\n", x);
 }
 
-print("x externo=%d\n", x);
+print("outer x=%d\n", x);

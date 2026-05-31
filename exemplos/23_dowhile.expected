@@ -1,0 +1,38 @@
+/*Compilador FOCA*/
+#include <stdio.h>
+int main(void) {
+    int t1;
+    int t2;
+    int t3;
+    int t4;
+    int t5;
+    int t6;
+    int t7;
+    int t8;
+    int t9;
+    int t10;
+    int t11;
+
+    t1 = 0;
+    t2 = t1;
+    t3 = 0;
+    t4 = t3;
+L1:
+    t5 = 1;
+    t6 = t4 + t5;
+    t4 = t6;
+    t7 = 2;
+    t8 = t4 == t7;
+    if (!t8) goto L4;
+    goto L2;
+L4:
+    t9 = t2 + t4;
+    t2 = t9;
+L2:
+    t10 = 4;
+    t11 = t4 < t10;
+    if (t11) goto L1;
+L3:
+    printf("x = %d i = %d", t2, t4);
+    return 0;
+}
