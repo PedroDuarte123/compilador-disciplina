@@ -30,6 +30,10 @@ STRLIT \"([^\\\"\n]|\\.)*\"
 "scan"      { return TK_SCAN; }
 "if"        { return TK_IF; }
 "else"      { return TK_ELSE; }
+"break"     { return TK_BREAK; }
+"switch"    { return TK_SWITCH; }
+"case"      { return TK_CASE; }
+"default"   { return TK_DEFAULT; }
 "true"      { yylval.label = "1"; return TK_BOOL_LIT; }
 "false"     { yylval.label = "0"; return TK_BOOL_LIT; }
 "'"[^'\\\n]"'"   { yylval.label = yytext; return TK_CHAR_LIT; }
@@ -53,6 +57,7 @@ STRLIT \"([^\\\"\n]|\\.)*\"
 [=]         { return *yytext; }
 [;]         { return *yytext; }
 [,]         { return *yytext; }
+[:]         { return *yytext; }
 [{]         { return *yytext; }
 [}]         { return *yytext; }
 
