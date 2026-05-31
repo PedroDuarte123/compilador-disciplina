@@ -1,13 +1,11 @@
 int a;
 float b;
 char c;
-bool d;
 string s;
 
 scan a;
 scan b;
 scan c;
-scan d;
 scan s;
 
-print("a=%d b=%f c=%c d=%d s=%s\n", a, b, c, d, s);
+print("a=%d b=%f c=%c s=%s\n", a, b, c, s);

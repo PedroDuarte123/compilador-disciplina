@@ -10,6 +10,7 @@ int var_temp_qnt;
 int linha = 1;
 string codigo_gerado;
 bool usa_string = false;
+bool usa_io = false;
 int erros = 0;
 int label_qnt = 0;
 
@@ -79,6 +80,7 @@ string tipo_para_c(const string& t) {
 }
 
 string gen_string_runtime_support();
+string gen_io_runtime_support();
 
 int yylex(void);
 void yyerror(string);
@@ -161,6 +163,15 @@ S			: LISTA_COMANDOS
 					codigo_gerado += "#include <stdlib.h>\n\n";
 					string rt = gen_string_runtime_support();
 					codigo_gerado += rt;
+					if (usa_io)
+						codigo_gerado += gen_io_runtime_support();
+					codigo_gerado += "int main(void) {\n";
+				}
+				else if (usa_io)
+				{
+					codigo_gerado += "/*Compilador FOCA*/\n";
+					codigo_gerado += "#include <stdio.h>\n\n";
+					codigo_gerado += gen_io_runtime_support();
 					codigo_gerado += "int main(void) {\n";
 				}
 				else
@@ -332,6 +343,7 @@ COMANDO		: TIPO TK_ID ';'
 				}
 				else
 				{
+					usa_io = true;
 					atribuir_temporario($2.label);
 					sym->inicializado = true;
 					if (is_string(sym->tipo))
@@ -341,16 +353,44 @@ COMANDO		: TIPO TK_ID ';'
 					}
 					else if (sym->tipo == "float")
 					{
-						$$.traducao = "\tscanf(\"%f\", &" + sym->nome_interno + ");\n";
+						string tscan = gentempcode("int");
+						string tok = gentempcode("boolean");
+						string Lok = genlabel();
+						$$.traducao = "\t" + tscan + " = scanf(\"%f\", &" + sym->nome_interno + ");\n"
+							+ "\t" + tok + " = (" + tscan + " == 1);\n"
+							+ "\tif (" + tok + ") goto " + Lok + ";\n"
+							+ "\t" + sym->nome_interno + " = 0;\n"
+							+ "\tfoca_discard_line();\n"
+							+ Lok + ":\n";
 					}
 					else if (sym->tipo == "char")
 					{
-						$$.traducao = "\tscanf(\" %c\", &" + sym->nome_interno + ");\n";
+						string tscan = gentempcode("int");
+						string tok = gentempcode("boolean");
+						string Lok = genlabel();
+						string Lend = genlabel();
+						$$.traducao = "\t" + tscan + " = scanf(\" %c\", &" + sym->nome_interno + ");\n"
+							+ "\t" + tok + " = (" + tscan + " == 1);\n"
+							+ "\tif (" + tok + ") goto " + Lok + ";\n"
+							+ "\t" + sym->nome_interno + " = 0;\n"
+							+ "\tfoca_discard_line();\n"
+							+ "\tgoto " + Lend + ";\n"
+							+ Lok + ":\n"
+							+ "\tfoca_discard_line();\n"
+							+ Lend + ":\n";
 					}
 					else
 					{
 						/* int/boolean */
-						$$.traducao = "\tscanf(\"%d\", &" + sym->nome_interno + ");\n";
+						string tscan = gentempcode("int");
+						string tok = gentempcode("boolean");
+						string Lok = genlabel();
+						$$.traducao = "\t" + tscan + " = scanf(\"%d\", &" + sym->nome_interno + ");\n"
+							+ "\t" + tok + " = (" + tscan + " == 1);\n"
+							+ "\tif (" + tok + ") goto " + Lok + ";\n"
+							+ "\t" + sym->nome_interno + " = 0;\n"
+							+ "\tfoca_discard_line();\n"
+							+ Lok + ":\n";
 					}
 				}
 			}
@@ -1181,6 +1221,27 @@ string gen_string_runtime_support()
 		"\tch = getchar();\n"
 		"\tgoto L_scan_loop_check;\n"
 		"L_scan_done:\n"
+		"\treturn;\n"
+		"}\n\n"
+	);
+}
+
+string gen_io_runtime_support()
+{
+	return string(
+		"static void foca_discard_line(void) {\n"
+		"\tint ch;\n"
+		"\tint t1;\n"
+		"L_discard_get:\n"
+		"\tch = getchar();\n"
+		"\tt1 = (ch == EOF);\n"
+		"\tif (t1) goto L_discard_end;\n"
+		"\tt1 = (ch == '\\n');\n"
+		"\tif (t1) goto L_discard_end;\n"
+		"\tt1 = (ch == '\\r');\n"
+		"\tif (t1) goto L_discard_end;\n"
+		"\tgoto L_discard_get;\n"
+		"L_discard_end:\n"
 		"\treturn;\n"
 		"}\n\n"
 	);

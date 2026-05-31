@@ -229,22 +229,60 @@ L_scan_done:
 	return;
 }
 
+static void foca_discard_line(void) {
+	int ch;
+	int t1;
+L_discard_get:
+	ch = getchar();
+	t1 = (ch == EOF);
+	if (t1) goto L_discard_end;
+	t1 = (ch == '\n');
+	if (t1) goto L_discard_end;
+	t1 = (ch == '\r');
+	if (t1) goto L_discard_end;
+	goto L_discard_get;
+L_discard_end:
+	return;
+}
+
 int main(void) {
 	int t1;
-	float t2;
-	char t3;
-	int t4;
-	foca_string t5;
-	float t6;
+	int t2;
+	int t3;
+	float t4;
+	int t5;
+	int t6;
+	char t7;
+	int t8;
+	int t9;
+	foca_string t10;
+	float t11;
 
-	foca_str_init(&t5);
+	foca_str_init(&t10);
 
-	scanf("%d", &t1);
-	scanf("%f", &t2);
-	scanf(" %c", &t3);
-	scanf("%d", &t4);
-	foca_str_scanline(&t5);
-	t6 = t2;
-	printf("a=%d b=%f c=%c d=%d s=%s\n", t1, t6, t3, t4, foca_str_cstr(&t5));
+	t2 = scanf("%d", &t1);
+	t3 = (t2 == 1);
+	if (t3) goto L1;
+	t1 = 0;
+	foca_discard_line();
+L1:
+	t5 = scanf("%f", &t4);
+	t6 = (t5 == 1);
+	if (t6) goto L2;
+	t4 = 0;
+	foca_discard_line();
+L2:
+	t8 = scanf(" %c", &t7);
+	t9 = (t8 == 1);
+	if (t9) goto L3;
+	t7 = 0;
+	foca_discard_line();
+	goto L4;
+L3:
+	foca_discard_line();
+L4:
+	foca_str_scanline(&t10);
+	t11 = t4;
+	printf("a=%d b=%f c=%c s=%s\n", t1, t11, t7, foca_str_cstr(&t10));
 	return 0;
 }
