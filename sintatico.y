@@ -415,7 +415,7 @@ SWITCH_CLAUSES	: TK_CASE E ':' COMANDO SWITCH_CLAUSES // trata as clausulas
 				$$.traducao = Lcase + ":\n"
 					+ $2.traducao
 					+ "\tif (" + context.switch_label + " != " + $2.label + ") goto " + next_label + ";\n"
-					+ $3.traducao
+					+ $4.traducao
 					+ $5.traducao;
 			}
 			| TK_DEFAULT ':' COMANDO
