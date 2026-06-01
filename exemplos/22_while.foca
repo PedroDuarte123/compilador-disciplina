@@ -8,3 +8,5 @@ while (i < 5) {
 	 i = i + 1;
 }
 print("x = %d", x);
+print("i = %d", i);
+

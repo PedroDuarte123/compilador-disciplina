@@ -1,0 +1,29 @@
+string a;
+string b;
+string c;
+string d;
+string e;
+
+a = "ola";
+b = "ola";
+c = "mundo";
+d = a + " " + c;
+e = "";
+
+if (a == b) print("1: a==b\n");
+else print("1: a!=b\n");
+
+if (a != c) print("2: a!=c\n");
+else print("2: a==c\n");
+
+if (a == "ola") print("3: a==\"ola\"\n");
+else print("3: a!=\"ola\"\n");
+
+if (d == "ola mundo") print("4: d==\"ola mundo\"\n");
+else print("4: d!=\"ola mundo\"\n");
+
+if (d != "ola mundo") print("5: d!=\"ola mundo\"\n");
+else print("5: d==\"ola mundo\"\n");
+
+if (e == "") print("6: e==vazia\n");
+else print("6: e!=vazia\n");

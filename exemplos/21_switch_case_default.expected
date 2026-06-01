@@ -6,7 +6,7 @@ int main(void) {
 	int t3;
 	int t4;
 
-	t1 = 5;
+	t1 = 1;
 	t2 = t1;
 L4:
 	t3 = 1;
