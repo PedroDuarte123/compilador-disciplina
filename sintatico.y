@@ -103,11 +103,15 @@ atributos gerar_op_soma(const atributos& expressao_esquerda, const atributos& ex
 atributos gerar_op_relacional(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
 atributos gerar_op_logica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
 atributos gerar_op_concat(const atributos& expressao_esquerda, const atributos& expressao_direita);
+atributos gerar_unario_aritmetico(const char* op, const atributos& expr);
+atributos gerar_inc_dec(const string& nome, bool incrementar, bool prefixo);
 string gerar_print_simples(const atributos& expr);
 string gerar_print_template(const string& literal, const atributos& args);
 string append_print_arg(const string& atual, const string& tipo, const string& label);
 vector<string> split_print_args(const string& serializado);
 string formatador_por_tipo(const string& tipo);
+bool is_tipo_unario_aritmetico(const string& tipo);
+string literal_um_para_tipo(const string& tipo);
 string genlabel();
 %}
 
@@ -144,6 +148,8 @@ string genlabel();
 %token TK_AND
 %token TK_OR
 %token TK_NOT
+%token TK_INC
+%token TK_DEC
 
 %start S
 
@@ -153,7 +159,8 @@ string genlabel();
 %left TK_IGUAL TK_DIFERENTE TK_MENOR TK_MAIOR TK_MENOR_OU_IGUAL TK_MAIOR_OU_IGUAL
 %left '+' '-'
 %left '*' '/'
-%right TK_NOT
+%right TK_NOT UPLUS UMINUS PREINC PREDEC
+%left POSTINC POSTDEC
 %nonassoc TK_IFAKE // token fake para resolver ambiguidade do else (declarado antes, tem precedência menor)
 %nonassoc TK_ELSE // precedência maior (declarado depois) -> resolver dangling else
 
@@ -641,6 +648,14 @@ E 			: E '+' E
 			{
 				$$ = gerar_op_logica($1, "||", $3);
 			}
+			| '+' E %prec UPLUS
+			{
+				$$ = gerar_unario_aritmetico("+", $2);
+			}
+			| '-' E %prec UMINUS
+			{
+				$$ = gerar_unario_aritmetico("-", $2);
+			}
 			| TK_NOT E
 			{
 				if ($2.tipo != "boolean")
@@ -648,6 +663,14 @@ E 			: E '+' E
 				$$.tipo = "boolean";
 				$$.label = gentempcode("boolean");
 				$$.traducao = $2.traducao + "\t" + $$.label + " = !" + $2.label + ";\n";
+			}
+			| TK_INC TK_ID %prec PREINC
+			{
+				$$ = gerar_inc_dec($2.label, true, true);
+			}
+			| TK_DEC TK_ID %prec PREDEC
+			{
+				$$ = gerar_inc_dec($2.label, false, true);
 			}
 			| '(' TIPO ')' E
 			{
@@ -747,6 +770,14 @@ E 			: E '+' E
 				$$.traducao = "\tfoca_str_from_lit(&" + $$.label + ", " + $1.label + ", (int)(sizeof(" + $1.label + ") - 1));\n";
 				$$.tipo = "string";
 			}
+			| TK_ID TK_INC %prec POSTINC
+			{
+				$$ = gerar_inc_dec($1.label, true, false);
+			}
+			| TK_ID TK_DEC %prec POSTDEC
+			{
+				$$ = gerar_inc_dec($1.label, false, false);
+			}
 			| TK_ID
 			{
 				is_declarado($1.label);
@@ -817,6 +848,86 @@ void ensure_float_temp_for_literal(string &label, string &code, const atributos 
 bool is_boolean(const string& tipo)
 {
 	return tipo == "boolean";
+}
+
+bool is_tipo_unario_aritmetico(const string& tipo)
+{
+	return tipo == "int" || tipo == "float";
+}
+
+string literal_um_para_tipo(const string& tipo)
+{
+	if (tipo == "float")
+		return "1.0";
+	return "1";
+}
+
+atributos gerar_unario_aritmetico(const char* op, const atributos& expr)
+{
+	atributos out;
+	if (!is_tipo_unario_aritmetico(expr.tipo))
+	{
+		yyerror("Operador unário aritmético exige operando int ou float");
+		out.tipo = expr.tipo;
+		out.label = expr.label;
+		out.traducao = expr.traducao;
+		return out;
+	}
+
+	if (string(op) == "+")
+		return expr;
+
+	out.tipo = expr.tipo;
+	out.label = gentempcode(expr.tipo);
+	out.traducao = expr.traducao + "\t" + out.label + " = -" + expr.label + ";\n";
+	return out;
+}
+
+atributos gerar_inc_dec(const string& nome, bool incrementar, bool prefixo)
+{
+	atributos out;
+	simbolo* sym = buscar_simbolo(nome);
+	if (!sym)
+	{
+		yyerror("Variável '" + nome + "' não declarada");
+		out.tipo = "int";
+		out.label = "";
+		out.traducao = "";
+		return out;
+	}
+
+	if (!is_tipo_unario_aritmetico(sym->tipo))
+	{
+		yyerror("Operadores '++' e '--' exigem variável int ou float");
+		atribuir_temporario(nome);
+		out.tipo = sym->tipo;
+		out.label = sym->nome_interno;
+		out.traducao = "";
+		return out;
+	}
+
+	if (!sym->inicializado)
+		yyerror("Variável '" + nome + "' usada antes de inicialização");
+
+	atribuir_temporario(nome);
+	sym->inicializado = true;
+	string destino = sym->nome_interno;
+	string op = incrementar ? "+" : "-";
+	string um = literal_um_para_tipo(sym->tipo);
+
+	out.tipo = sym->tipo;
+	if (prefixo)
+	{
+		out.label = destino;
+		out.traducao = "\t" + destino + " = " + destino + " " + op + " " + um + ";\n";
+	}
+	else
+	{
+		out.label = gentempcode(sym->tipo);
+		out.traducao = "\t" + out.label + " = " + destino + ";\n"
+			+ "\t" + destino + " = " + destino + " " + op + " " + um + ";\n";
+	}
+	return out;
 }
 
 string append_print_arg(const string& atual, const string& tipo, const string& label)
