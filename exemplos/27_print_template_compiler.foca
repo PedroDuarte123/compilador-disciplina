@@ -1,0 +1,8 @@
+int a;
+string s;
+
+a = 42;
+s = "mundo";
+
+print(a);
+printf("ola %s %d!\n", s, a);

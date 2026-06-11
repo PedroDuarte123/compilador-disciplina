@@ -32,7 +32,6 @@ L_cstr_end:
 	return p;
 }
 
-/* Runtime em estilo 3-endereços (labels + goto; sem for/while/else/?:). */
 static void foca_str_reserve(foca_string *s, int needed_cap) {
 	int new_cap;
 	char *p;

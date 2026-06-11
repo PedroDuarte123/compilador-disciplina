@@ -7,6 +7,6 @@ while (i < 5) {
 	 x = x + i;
 	 i = i + 1;
 }
-print("x = %d", x);
-print("i = %d", i);
+printf("x = %d", x);
+printf("i = %d", i);
 

@@ -3,6 +3,7 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <cctype>
 
 using namespace std;
 
@@ -102,6 +103,11 @@ atributos gerar_op_soma(const atributos& expressao_esquerda, const atributos& ex
 atributos gerar_op_relacional(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
 atributos gerar_op_logica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
 atributos gerar_op_concat(const atributos& expressao_esquerda, const atributos& expressao_direita);
+string gerar_print_simples(const atributos& expr);
+string gerar_print_template(const string& literal, const atributos& args);
+string append_print_arg(const string& atual, const string& tipo, const string& label);
+vector<string> split_print_args(const string& serializado);
+string formatador_por_tipo(const string& tipo);
 string genlabel();
 %}
 
@@ -114,6 +120,7 @@ string genlabel();
 %token TK_BOOLEAN
 %token TK_STRING
 %token TK_PRINT
+%token TK_PRINTF
 %token TK_SCAN
 %token TK_IF
 %token TK_ELSE
@@ -329,9 +336,13 @@ COMANDO		: TIPO TK_ID ';'
 			{
 				$$.traducao = "\tprintf(" + $3.label + ");\n";
 			}
-			| TK_PRINT '(' TK_STR_LIT ',' ARGS ')' ';'
+			| TK_PRINTF '(' TK_STR_LIT ',' ARGS ')' ';'
 			{
-				$$.traducao = $5.traducao + "\tprintf(" + $3.label + ", " + $5.label + ");\n";
+				$$.traducao = gerar_print_template($3.label, $5);
+			}
+			| TK_PRINT '(' E ')' ';'
+			{
+				$$.traducao = gerar_print_simples($3);
 			}
 			| TK_SCAN TK_ID ';'
 			{
@@ -448,24 +459,12 @@ BLOCO		: '{'
 ARGS		: E
 			{
 				$$.traducao = $1.traducao;
-				if (is_string($1.tipo)) {
-					usa_string = true;
-					$$.label = "foca_str_cstr(&" + $1.label + ")";
-				}
-				else
-					$$.label = $1.label;
+				$$.label = append_print_arg("", $1.tipo, $1.label);
 			}
 			| ARGS ',' E
 			{
 				$$.traducao = $1.traducao + $3.traducao;
-				string arg;
-				if (is_string($3.tipo)) {
-					usa_string = true;
-					arg = "foca_str_cstr(&" + $3.label + ")";
-				}
-				else
-					arg = $3.label;
-				$$.label = $1.label + ", " + arg;
+				$$.label = append_print_arg($1.label, $3.tipo, $3.label);
 			}
 			;
 
@@ -818,6 +817,164 @@ void ensure_float_temp_for_literal(string &label, string &code, const atributos 
 bool is_boolean(const string& tipo)
 {
 	return tipo == "boolean";
+}
+
+string append_print_arg(const string& atual, const string& tipo, const string& label)
+{
+	const char sep = '\x1f';
+	string out = atual;
+	if (!out.empty())
+		out += sep;
+	out += tipo;
+	out += sep;
+	out += label;
+	return out;
+}
+
+vector<string> split_print_args(const string& serializado)
+{
+	vector<string> partes;
+	string atual;
+	const char sep = '\x1f';
+	for (char ch : serializado)
+	{
+		if (ch == sep)
+		{
+			partes.push_back(atual);
+			atual.clear();
+		}
+		else
+		{
+			atual += ch;
+		}
+	}
+	partes.push_back(atual);
+	return partes;
+}
+
+string formatador_por_tipo(const string& tipo)
+{
+	if (tipo == "float") return "%f";
+	if (tipo == "char") return "%c";
+	if (tipo == "string") return "%s";
+	return "%d";
+}
+
+string gerar_print_simples(const atributos& expr)
+{
+	string codigo = expr.traducao;
+	string formato = formatador_por_tipo(expr.tipo);
+	string valor = expr.label;
+	if (is_string(expr.tipo))
+	{
+		usa_string = true;
+		valor = "foca_str_cstr(&" + expr.label + ")";
+	}
+	codigo += "\tprintf(\"" + formato + "\", " + valor + ");\n";
+	return codigo;
+}
+
+string gerar_print_template(const string& literal, const atributos& args)
+{
+	vector<string> partes = split_print_args(args.label);
+	vector<string> tipos;
+	vector<string> labels;
+	for (size_t i = 0; i + 1 < partes.size(); i += 2)
+	{
+		tipos.push_back(partes[i]);
+		labels.push_back(partes[i + 1]);
+	}
+
+	string codigo = args.traducao;
+	string trecho = "\"";
+	size_t indice_arg = 0;
+
+	for (size_t i = 1; i + 1 < literal.size(); ++i)
+	{
+		char ch = literal[i];
+		if (ch == '\\' && i + 1 < literal.size() - 1)
+		{
+			trecho += ch;
+			trecho += literal[++i];
+			continue;
+		}
+
+		if (ch == '%')
+		{
+			if (i + 1 >= literal.size() - 1)
+			{
+				yyerror("Template de print termina com '%' inválido");
+				break;
+			}
+
+			char spec = literal[++i];
+			if (spec == '%')
+			{
+				trecho += '%';
+				continue;
+			}
+
+			if (indice_arg >= labels.size())
+			{
+				yyerror("Quantidade de argumentos insuficiente para o template de print");
+				break;
+			}
+
+			if (trecho != "\"")
+			{
+				trecho += "\"";
+				codigo += "\tprintf(" + trecho + ");\n";
+				trecho = "\"";
+			}
+
+			string tipo = tipos[indice_arg];
+			string esperado;
+			switch (spec)
+			{
+				case 'd': esperado = "int"; break;
+				case 'f': esperado = "float"; break;
+				case 'c': esperado = "char"; break;
+				case 's': esperado = "string"; break;
+				default:
+					yyerror(string("Placeholder de print não suportado: %") + spec);
+					esperado.clear();
+			}
+
+			if (!esperado.empty())
+			{
+				bool compativel = (tipo == esperado)
+					|| (spec == 'd' && tipo == "boolean");
+				if (!compativel)
+				{
+					yyerror("Tipo incompatível no template de print: esperado " + esperado + ", recebeu " + tipo);
+				}
+				string valor = labels[indice_arg];
+				if (tipo == "string")
+				{
+					usa_string = true;
+					valor = "foca_str_cstr(&" + valor + ")";
+				}
+				codigo += "\tprintf(\"%" + string(1, spec) + "\", " + valor + ");\n";
+			}
+			++indice_arg;
+			continue;
+		}
+
+		if (ch == '"' || ch == '\\')
+			trecho += '\\';
+		trecho += ch;
+	}
+
+	if (indice_arg < labels.size())
+		yyerror("Quantidade de argumentos excede os placeholders do template de print");
+
+	if (trecho != "\"")
+	{
+		trecho += "\"";
+		codigo += "\tprintf(" + trecho + ");\n";
+	}
+
+	return codigo;
 }
 
 bool is_switch_tipo_valido(const string& tipo)

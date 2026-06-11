@@ -8,4 +8,6 @@ scan b;
 scan c;
 scan s;
 
-print("a=%d b=%f c=%c s=%s\n", a, b, c, s);
+
+
+printf("a=%d b=%f c=%c s=%s\n", a, b, c, s);

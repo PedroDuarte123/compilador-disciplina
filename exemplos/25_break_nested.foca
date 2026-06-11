@@ -5,13 +5,17 @@ i = 0;
 while (i < 3) {
 	j = 0;
 	while (j < 5) {
-		print("loop i=%d j=%d\n", i, j);
+		printf("loop i=%d j=%d\n", i, j);
 		if (j == 2) break;
 		j = j + 1;
 	}
-	print("apos_interno i=%d j=%d\n", i, j);
+	printf("apos_interno i=%d j=%d\n", i, j);
 	if (i == 1) break;
 	i = i + 1;
 }
 
-print("fim i=%d j=%d\n", i, j);
+printf("fim i=%d j=%d\n", i, j);
+
+string a;
+a = "ola";
+

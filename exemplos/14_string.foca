@@ -6,4 +6,4 @@ A = "ola";
 B = " mundo";
 C = A + B + "!";
 
-print("%s", C);
+printf("%s", C);
