@@ -10,7 +10,11 @@ int main(void) {
 	t2 = t1;
 	t3 = 2;
 	t4 = t3;
-	printf("inner x=%d\n", t4);
-	printf("outer x=%d\n", t2);
+	printf("inner x=");
+	printf("%d", t4);
+	printf("\n");
+	printf("outer x=");
+	printf("%d", t2);
+	printf("\n");
 	return 0;
 }

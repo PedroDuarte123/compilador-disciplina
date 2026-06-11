@@ -7,4 +7,4 @@ do {
 	 if (i == 2) continue;
 	 x = x + i;
 } while (i < 4);
-print("x = %d i = %d", x, i);
+printf("x = %d i = %d", x, i);

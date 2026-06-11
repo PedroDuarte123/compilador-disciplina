@@ -26,6 +26,7 @@ STRLIT \"([^\\\"\n]|\\.)*\"
 "char"      { return TK_CHAR; }
 "bool"      { return TK_BOOLEAN; }
 "string"    { return TK_STRING; }
+"printf"    { return TK_PRINTF; }
 "print"     { return TK_PRINT; }
 "scan"      { return TK_SCAN; }
 "if"        { return TK_IF; }
