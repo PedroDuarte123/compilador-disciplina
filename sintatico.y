@@ -105,6 +105,8 @@ atributos gerar_op_logica(const atributos& expressao_esquerda, const char* op, c
 atributos gerar_op_concat(const atributos& expressao_esquerda, const atributos& expressao_direita);
 atributos gerar_unario_aritmetico(const char* op, const atributos& expr);
 atributos gerar_inc_dec(const string& nome, bool incrementar, bool prefixo);
+atributos gerar_atribuicao(const string& nome, const atributos& expr);
+atributos gerar_atribuicao_composta(const string& nome, const char* op, const atributos& expr);
 string gerar_print_simples(const atributos& expr);
 string gerar_print_template(const string& literal, const atributos& args);
 string append_print_arg(const string& atual, const string& tipo, const string& label);
@@ -148,12 +150,16 @@ string genlabel();
 %token TK_AND
 %token TK_OR
 %token TK_NOT
+%token TK_ADD_ASSIGN
+%token TK_SUB_ASSIGN
+%token TK_MUL_ASSIGN
+%token TK_DIV_ASSIGN
 %token TK_INC
 %token TK_DEC
 
 %start S
 
-%right '='
+%right '=' TK_ADD_ASSIGN TK_SUB_ASSIGN TK_MUL_ASSIGN TK_DIV_ASSIGN
 %left TK_OR
 %left TK_AND
 %left TK_IGUAL TK_DIFERENTE TK_MENOR TK_MAIOR TK_MENOR_OU_IGUAL TK_MAIOR_OU_IGUAL
@@ -692,52 +698,23 @@ E 			: E '+' E
 			}
 			| TK_ID '=' E
 			{
-				is_declarado($1.label);
-				simbolo* sym = buscar_simbolo($1.label);
-				if (!sym)
-				{
-					$$.label = "";
-					$$.traducao = $3.traducao;
-					$$.tipo = $3.tipo;
-				}
-				else
-				{
-					atribuir_temporario($1.label);
-					string tipo_expressao_esquerda = sym->tipo;
-					string tipo_expressao_direita = $3.tipo;
-					string label_expressao_direita = $3.label;
-					string codigo_expressao_direita = $3.traducao;
-
-					if (is_string(tipo_expressao_esquerda) || is_string(tipo_expressao_direita))
-					{
-						usa_string = true;
-						if (!is_string(tipo_expressao_esquerda) || !is_string(tipo_expressao_direita))
-							yyerror("Tipos incompatíveis: não é possível atribuir " + tipo_expressao_direita + " em " + tipo_expressao_esquerda);
-					}
-					else if (tipo_expressao_esquerda == "float" && tipo_expressao_direita == "int")
-					{
-						string tmp = gentempcode("float");
-						codigo_expressao_direita += "\t" + tmp + " = (float) " + label_expressao_direita + ";\n";
-						label_expressao_direita = tmp;
-						tipo_expressao_direita = "float";
-					}
-					else if (tipo_expressao_esquerda == "int" && tipo_expressao_direita == "float")
-					{
-						yyerror("Conversão explícita necessária para atribuir float em int");
-					}
-					else if (tipo_expressao_esquerda != tipo_expressao_direita)
-					{
-						yyerror("Tipos incompatíveis: não é possível atribuir " + tipo_expressao_direita + " em " + tipo_expressao_esquerda);
-					}
-
-					sym->inicializado = true;
-					$$.label = sym->nome_interno;
-					$$.tipo = tipo_expressao_esquerda;
-					if (is_string(tipo_expressao_esquerda))
-						$$.traducao = codigo_expressao_direita + "\tfoca_str_copy(&" + $$.label + ", &" + label_expressao_direita + ");\n";
-					else
-						$$.traducao = codigo_expressao_direita + "\t" + $$.label + " = " + label_expressao_direita + ";\n";
-				}
+				$$ = gerar_atribuicao($1.label, $3);
+			}
+			| TK_ID TK_ADD_ASSIGN E
+			{
+				$$ = gerar_atribuicao_composta($1.label, "+", $3);
+			}
+			| TK_ID TK_SUB_ASSIGN E
+			{
+				$$ = gerar_atribuicao_composta($1.label, "-", $3);
+			}
+			| TK_ID TK_MUL_ASSIGN E
+			{
+				$$ = gerar_atribuicao_composta($1.label, "*", $3);
+			}
+			| TK_ID TK_DIV_ASSIGN E
+			{
+				$$ = gerar_atribuicao_composta($1.label, "/", $3);
 			}
 			| TK_NUM
 			{
@@ -928,6 +905,93 @@ atributos gerar_inc_dec(const string& nome, bool incrementar, bool prefixo)
 			+ "\t" + destino + " = " + destino + " " + op + " " + um + ";\n";
 	}
 	return out;
+}
+
+atributos gerar_atribuicao(const string& nome, const atributos& expr)
+{
+	atributos out;
+	is_declarado(nome);
+	simbolo* sym = buscar_simbolo(nome);
+	if (!sym)
+	{
+		out.label = "";
+		out.traducao = expr.traducao;
+		out.tipo = expr.tipo;
+		return out;
+	}
+
+	atribuir_temporario(nome);
+	string tipo_expressao_esquerda = sym->tipo;
+	string tipo_expressao_direita = expr.tipo;
+	string label_expressao_direita = expr.label;
+	string codigo_expressao_direita = expr.traducao;
+
+	if (is_string(tipo_expressao_esquerda) || is_string(tipo_expressao_direita))
+	{
+		usa_string = true;
+		if (!is_string(tipo_expressao_esquerda) || !is_string(tipo_expressao_direita))
+			yyerror("Tipos incompatíveis: não é possível atribuir " + tipo_expressao_direita + " em " + tipo_expressao_esquerda);
+	}
+	else if (tipo_expressao_esquerda == "float" && tipo_expressao_direita == "int")
+	{
+		string tmp = gentempcode("float");
+		codigo_expressao_direita += "\t" + tmp + " = (float) " + label_expressao_direita + ";\n";
+		label_expressao_direita = tmp;
+		tipo_expressao_direita = "float";
+	}
+	else if (tipo_expressao_esquerda == "int" && tipo_expressao_direita == "float")
+	{
+		yyerror("Conversão explícita necessária para atribuir float em int");
+	}
+	else if (tipo_expressao_esquerda != tipo_expressao_direita)
+	{
+		yyerror("Tipos incompatíveis: não é possível atribuir " + tipo_expressao_direita + " em " + tipo_expressao_esquerda);
+	}
+
+	sym->inicializado = true;
+	out.label = sym->nome_interno;
+	out.tipo = tipo_expressao_esquerda;
+	if (is_string(tipo_expressao_esquerda))
+		out.traducao = codigo_expressao_direita + "\tfoca_str_copy(&" + out.label + ", &" + label_expressao_direita + ");\n";
+	else
+		out.traducao = codigo_expressao_direita + "\t" + out.label + " = " + label_expressao_direita + ";\n";
+	return out;
+}
+
+atributos gerar_atribuicao_composta(const string& nome, const char* op, const atributos& expr)
+{
+	is_declarado(nome);
+	simbolo* sym = buscar_simbolo(nome);
+	if (!sym)
+	{
+		atributos out;
+		out.label = "";
+		out.traducao = expr.traducao;
+		out.tipo = expr.tipo;
+		return out;
+	}
+
+	atribuir_temporario(nome);
+	atributos esquerda;
+	esquerda.tipo = sym->tipo;
+	if (sym->tipo == "float")
+	{
+		esquerda.label = gentempcode("float");
+		esquerda.traducao = "\t" + esquerda.label + " = " + sym->nome_interno + ";\n";
+	}
+	else
+	{
+		esquerda.label = sym->nome_interno;
+		esquerda.traducao = "";
+	}
+
+	atributos combinada;
+	if (string(op) == "+")
+		combinada = gerar_op_soma(esquerda, expr);
+	else
+		combinada = gerar_op_aritmetica(esquerda, op, expr);
+
+	return gerar_atribuicao(nome, combinada);
 }
 
 string append_print_arg(const string& atual, const string& tipo, const string& label)
