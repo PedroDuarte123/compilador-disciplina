@@ -45,6 +45,10 @@ STRLIT \"([^\\\"\n]|\\.)*\"
 {STRLIT}     { yylval.label = yytext; return TK_STR_LIT; }
 "=="        { return TK_IGUAL; }
 "!="        { return TK_DIFERENTE; }
+"+="        { return TK_ADD_ASSIGN; }
+"-="        { return TK_SUB_ASSIGN; }
+"*="        { return TK_MUL_ASSIGN; }
+"/="        { return TK_DIV_ASSIGN; }
 "++"        { return TK_INC; }
 "--"        { return TK_DEC; }
 "&&"        { return TK_AND; }
