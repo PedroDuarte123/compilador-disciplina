@@ -39,6 +39,8 @@ STRLIT \"([^\\\"\n]|\\.)*\"
 "default"   { return TK_DEFAULT; }
 "for"       { return TK_FOR; }
 "continue"  { return TK_CONTINUE; }
+"function"  { return TK_FUNCTION; }
+"return"    { return TK_RETURN; }
 "true"      { yylval.label = "1"; return TK_BOOL_LIT; }
 "false"     { yylval.label = "0"; return TK_BOOL_LIT; }
 "'"[^'\\\n]"'"   { yylval.label = yytext; return TK_CHAR_LIT; }

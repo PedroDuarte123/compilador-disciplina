@@ -14,6 +14,7 @@ bool usa_string = false;
 bool usa_io = false;
 int erros = 0;
 int label_qnt = 0;
+string codigo_funcoes;
 
 struct switch_context
 {
@@ -41,6 +42,27 @@ struct atributos
 	string extra2;
 };
 
+struct parametro_funcao
+{
+	string nome;
+	string tipo;
+	string nome_c;
+	string nome_interno;
+};
+
+struct funcao_info
+{
+	string nome;
+	string tipo_retorno;
+	vector<parametro_funcao> parametros;
+	string label_retorno;
+	string nome_retorno;
+	int temp_inicio;
+	int temp_fim;
+
+	funcao_info() : temp_inicio(0), temp_fim(0) {}
+};
+
 struct simbolo{
 	string nome;
 	string tipo;
@@ -57,6 +79,8 @@ struct simbolo{
 map<string, string> tipos_temp;
 
 static vector< map<string, simbolo> > escopos;
+static map<string, funcao_info> funcoes;
+static funcao_info* funcao_atual = nullptr;
 
 static void push_scope();
 static void pop_scope();
@@ -86,7 +110,7 @@ string gen_io_runtime_support();
 int yylex(void);
 void yyerror(string);
 string gentempcode(string tipo = "int");
-string gen_temp_declarations();
+string gen_temp_declarations_range(int inicio_exclusivo, int fim_inclusivo);
 void is_declarado(string);
 void is_inicializado(string);
 void atribuir_temporario(string);
@@ -115,6 +139,16 @@ string formatador_por_tipo(const string& tipo);
 bool is_tipo_unario_aritmetico(const string& tipo);
 string literal_um_para_tipo(const string& tipo);
 string genlabel();
+string append_param_decl(const string& atual, const string& tipo, const string& nome);
+vector<parametro_funcao> parse_parametros_funcao(const string& serializado);
+void registrar_funcao(const string& nome, const string& tipo_retorno, const string& params_serializados);
+void iniciar_funcao(const string& nome);
+string preparar_parametros_funcao();
+string finalizar_funcao(const string& traducao_corpo);
+void encerrar_funcao();
+string append_call_arg(const string& atual, const string& nome, const string& tipo, const string& label);
+atributos gerar_chamada_funcao(const string& nome, const atributos& argumentos);
+string literal_padrao_tipo(const string& tipo);
 %}
 
 %token TK_NUM
@@ -134,6 +168,8 @@ string genlabel();
 %token TK_DO
 %token TK_FOR
 %token TK_CONTINUE
+%token TK_FUNCTION
+%token TK_RETURN
 %token TK_BREAK
 %token TK_SWITCH
 %token TK_CASE
@@ -173,7 +209,7 @@ string genlabel();
 
 %%
 
-S			: LISTA_COMANDOS
+S			: LISTA_FUNCOES LISTA_COMANDOS
 			{
 				codigo_gerado.clear();
 				if (usa_string)
@@ -185,6 +221,7 @@ S			: LISTA_COMANDOS
 					codigo_gerado += rt;
 					if (usa_io)
 						codigo_gerado += gen_io_runtime_support();
+					codigo_gerado += $1.traducao;
 					codigo_gerado += "int main(void) {\n";
 				}
 				else if (usa_io)
@@ -192,23 +229,40 @@ S			: LISTA_COMANDOS
 					codigo_gerado += "/*Compilador FOCA*/\n";
 					codigo_gerado += "#include <stdio.h>\n\n";
 					codigo_gerado += gen_io_runtime_support();
+					codigo_gerado += $1.traducao;
 					codigo_gerado += "int main(void) {\n";
 				}
 				else
 				{
 					codigo_gerado += "/*Compilador FOCA*/\n";
 					codigo_gerado += "#include <stdio.h>\n";
+					codigo_gerado += "\n";
+					codigo_gerado += $1.traducao;
 					codigo_gerado += "int main(void) {\n";
 				}
 
 				{
-					string decls = gen_temp_declarations();
+					int inicio_main = $1.extra.empty() ? 0 : stoi($1.extra);
+					string decls = gen_temp_declarations_range(inicio_main, var_temp_qnt);
 					codigo_gerado += decls;
 				}
 
-				codigo_gerado += $1.traducao;
+				codigo_gerado += $2.traducao;
 
 				codigo_gerado += "\treturn 0;\n}\n";
+			}
+			;
+
+
+LISTA_FUNCOES	: LISTA_FUNCOES FUNCAO_DEF
+			{
+				$$.traducao = $1.traducao + $2.traducao;
+				$$.extra = to_string(var_temp_qnt);
+			}
+			| /* vazio */
+			{
+				$$.traducao = "";
+				$$.extra = to_string(var_temp_qnt);
 			}
 			;
 
@@ -243,6 +297,62 @@ LISTA_COMANDOS	: LISTA_COMANDOS COMANDO
 			| /* vazio */
 			{
 				$$.traducao = "";
+			}
+			;
+
+FUNCAO_CABECALHO : TK_FUNCTION TIPO TK_ID '(' PARAMS_DECL_OPT ')'
+			{
+				registrar_funcao($3.label, $2.tipo, $5.label);
+				iniciar_funcao($3.label);
+				$$.label = $3.label;
+			}
+			;
+
+FUNCAO_ENTER	: '{'
+			{
+				push_scope();
+				$$.traducao = preparar_parametros_funcao();
+			}
+			;
+
+BLOCO_FUNCAO	: FUNCAO_ENTER LISTA_COMANDOS '}'
+			{
+				pop_scope();
+				$$.traducao = $1.traducao + $2.traducao;
+			}
+			;
+
+FUNCAO_DEF	: FUNCAO_CABECALHO BLOCO_FUNCAO
+			{
+				$$.traducao = finalizar_funcao($2.traducao);
+				encerrar_funcao();
+			}
+			;
+
+PARAM_DECL	: TIPO TK_ID
+			{
+				$$.tipo = $1.tipo;
+				$$.label = $2.label;
+			}
+			;
+
+PARAMS_DECL	: PARAM_DECL
+			{
+				$$.label = append_param_decl("", $1.tipo, $1.label);
+			}
+			| PARAMS_DECL ',' PARAM_DECL
+			{
+				$$.label = append_param_decl($1.label, $3.tipo, $3.label);
+			}
+			;
+
+PARAMS_DECL_OPT : PARAMS_DECL
+			{
+				$$.label = $1.label;
+			}
+			| /* vazio */
+			{
+				$$.label = "";
 			}
 			;
 
@@ -296,13 +406,56 @@ COMANDO		: TIPO TK_ID ';'
 				else
 					yyerror("'break' fora de loop ou switch");
 			}
-		| TK_CONTINUE ';'
-		{
-			if (loop_stack.empty())
-				yyerror("'continue' fora de loop");
-			else
-				$$.traducao = "\tgoto " + current_loop().continue_label + ";\n";
-		}
+			| TK_CONTINUE ';'
+			{
+				if (loop_stack.empty())
+					yyerror("'continue' fora de loop");
+				else
+					$$.traducao = "\tgoto " + current_loop().continue_label + ";\n";
+			}
+			| TK_RETURN E ';'
+			{
+				if (!funcao_atual)
+				{
+					yyerror("'return' fora de função");
+					$$.traducao = $2.traducao;
+				}
+				else
+				{
+					string tipo_destino = funcao_atual->tipo_retorno;
+					string tipo_origem = $2.tipo;
+					string valor = $2.label;
+					string codigo = $2.traducao;
+
+					if (is_string(tipo_destino) || is_string(tipo_origem))
+					{
+						usa_string = true;
+						if (!is_string(tipo_destino) || !is_string(tipo_origem))
+							yyerror("Tipos incompatíveis no retorno da função '" + funcao_atual->nome + "'");
+					}
+					else if (tipo_destino == "float" && tipo_origem == "int")
+					{
+						string tmp = gentempcode("float");
+						codigo += "\t" + tmp + " = (float) " + valor + ";\n";
+						valor = tmp;
+					}
+					else if (tipo_destino == "int" && tipo_origem == "float")
+					{
+						yyerror("Conversão explícita necessária no retorno da função '" + funcao_atual->nome + "'");
+					}
+					else if (tipo_destino != tipo_origem)
+					{
+						yyerror("Tipos incompatíveis no retorno da função '" + funcao_atual->nome + "'");
+					}
+
+					if (is_string(tipo_destino))
+						codigo += "\tfoca_str_copy(&" + funcao_atual->nome_retorno + ", &" + valor + ");\n";
+					else
+						codigo += "\t" + funcao_atual->nome_retorno + " = " + valor + ";\n";
+					codigo += "\tgoto " + funcao_atual->label_retorno + ";\n";
+					$$.traducao = codigo;
+				}
+			}
 		| WHILE_HEAD COMANDO
     	{
         $$.traducao = $1.label + ":\n"
@@ -421,6 +574,41 @@ COMANDO		: TIPO TK_ID ';'
 			| E ';'
 			{
 				$$.traducao = $1.traducao;
+			}
+			;
+
+CALL_ARG	: E
+			{
+				$$ = $1;
+				$$.extra = "";
+			}
+			| TK_ID ':' E
+			{
+				$$ = $3;
+				$$.extra = $1.label;
+			}
+			;
+
+CALL_ARGS	: CALL_ARG
+			{
+				$$.traducao = $1.traducao;
+				$$.label = append_call_arg("", $1.extra, $1.tipo, $1.label);
+			}
+			| CALL_ARGS ',' CALL_ARG
+			{
+				$$.traducao = $1.traducao + $3.traducao;
+				$$.label = append_call_arg($1.label, $3.extra, $3.tipo, $3.label);
+			}
+			;
+
+CALL_ARGS_OPT : CALL_ARGS
+			{
+				$$ = $1;
+			}
+			| /* vazio */
+			{
+				$$.traducao = "";
+				$$.label = "";
 			}
 			;
 
@@ -699,6 +887,10 @@ E 			: E '+' E
 			| TK_ID '=' E
 			{
 				$$ = gerar_atribuicao($1.label, $3);
+			}
+			| TK_ID '(' CALL_ARGS_OPT ')'
+			{
+				$$ = gerar_chamada_funcao($1.label, $3);
 			}
 			| TK_ID TK_ADD_ASSIGN E
 			{
@@ -1003,6 +1195,317 @@ string append_print_arg(const string& atual, const string& tipo, const string& l
 	out += tipo;
 	out += sep;
 	out += label;
+	return out;
+}
+
+string append_param_decl(const string& atual, const string& tipo, const string& nome)
+{
+	const char sep = '\x1f';
+	string out = atual;
+	if (!out.empty())
+		out += sep;
+	out += tipo;
+	out += sep;
+	out += nome;
+	return out;
+}
+
+vector<parametro_funcao> parse_parametros_funcao(const string& serializado)
+{
+	vector<parametro_funcao> parametros;
+	if (serializado.empty())
+		return parametros;
+
+	vector<string> partes;
+	string atual;
+	const char sep = '\x1f';
+	for (char ch : serializado)
+	{
+		if (ch == sep)
+		{
+			partes.push_back(atual);
+			atual.clear();
+		}
+		else
+		{
+			atual += ch;
+		}
+	}
+	partes.push_back(atual);
+
+	for (size_t i = 0; i + 1 < partes.size(); i += 2)
+	{
+		parametro_funcao param;
+		param.tipo = partes[i];
+		param.nome = partes[i + 1];
+		parametros.push_back(param);
+	}
+	return parametros;
+}
+
+void registrar_funcao(const string& nome, const string& tipo_retorno, const string& params_serializados)
+{
+	if (funcoes.find(nome) != funcoes.end())
+	{
+		yyerror("Função '" + nome + "' redeclarada");
+		return;
+	}
+
+	funcao_info info;
+	info.nome = nome;
+	info.tipo_retorno = tipo_retorno;
+	info.parametros = parse_parametros_funcao(params_serializados);
+
+	map<string, bool> nomes_parametros;
+	for (size_t i = 0; i < info.parametros.size(); ++i)
+	{
+		parametro_funcao &param = info.parametros[i];
+		if (nomes_parametros[param.nome])
+			yyerror("Parâmetro '" + param.nome + "' redeclarado na função '" + nome + "'");
+		nomes_parametros[param.nome] = true;
+		param.nome_c = "p_" + nome + "_" + param.nome;
+		param.nome_interno = param.nome_c;
+	}
+
+	funcoes[nome] = info;
+}
+
+void iniciar_funcao(const string& nome)
+{
+	auto it = funcoes.find(nome);
+	if (it == funcoes.end())
+		return;
+	funcao_atual = &it->second;
+	funcao_atual->temp_inicio = var_temp_qnt;
+	funcao_atual->nome_retorno = gentempcode(funcao_atual->tipo_retorno);
+	funcao_atual->label_retorno = genlabel();
+	for (size_t i = 0; i < funcao_atual->parametros.size(); ++i)
+	{
+		parametro_funcao &param = funcao_atual->parametros[i];
+		if (param.tipo == "string")
+			param.nome_interno = gentempcode("string");
+	}
+}
+
+string preparar_parametros_funcao()
+{
+	if (!funcao_atual)
+		return "";
+
+	string codigo;
+	for (size_t i = 0; i < funcao_atual->parametros.size(); ++i)
+	{
+		const parametro_funcao &param = funcao_atual->parametros[i];
+		auto &cur = escopo_atual();
+		cur.emplace(param.nome, simbolo(param.nome, param.tipo, param.nome_interno, true));
+		if (param.tipo == "string")
+		{
+			usa_string = true;
+			codigo += "\tfoca_str_copy(&" + param.nome_interno + ", &" + param.nome_c + ");\n";
+		}
+	}
+
+	string literal = literal_padrao_tipo(funcao_atual->tipo_retorno);
+	if (!literal.empty())
+		codigo += "\t" + funcao_atual->nome_retorno + " = " + literal + ";\n";
+	return codigo;
+}
+
+string finalizar_funcao(const string& traducao_corpo)
+{
+	if (!funcao_atual)
+		return "";
+
+	funcao_atual->temp_fim = var_temp_qnt;
+	string assinatura = tipo_para_c(funcao_atual->tipo_retorno) + " " + funcao_atual->nome + "(";
+	for (size_t i = 0; i < funcao_atual->parametros.size(); ++i)
+	{
+		if (i != 0)
+			assinatura += ", ";
+		assinatura += tipo_para_c(funcao_atual->parametros[i].tipo) + " " + funcao_atual->parametros[i].nome_c;
+	}
+	assinatura += ") {\n";
+
+	string codigo = assinatura;
+	codigo += gen_temp_declarations_range(funcao_atual->temp_inicio, funcao_atual->temp_fim);
+	codigo += traducao_corpo;
+	codigo += funcao_atual->label_retorno + ":\n";
+	codigo += "\treturn " + funcao_atual->nome_retorno + ";\n";
+	codigo += "}\n\n";
+	return codigo;
+}
+
+void encerrar_funcao()
+{
+	funcao_atual = nullptr;
+}
+
+string append_call_arg(const string& atual, const string& nome, const string& tipo, const string& label)
+{
+	const char field_sep = '\x1f';
+	const char item_sep = '\x1e';
+	string out = atual;
+	if (!out.empty())
+		out += item_sep;
+	out += nome;
+	out += field_sep;
+	out += tipo;
+	out += field_sep;
+	out += label;
+	return out;
+}
+
+string literal_padrao_tipo(const string& tipo)
+{
+	if (tipo == "float") return "0.0";
+	if (tipo == "string") return "";
+	return "0";
+}
+
+atributos gerar_chamada_funcao(const string& nome, const atributos& argumentos)
+{
+	atributos out;
+	auto it = funcoes.find(nome);
+	if (it == funcoes.end())
+	{
+		yyerror("Função '" + nome + "' não declarada");
+		out.traducao = argumentos.traducao;
+		out.tipo = "int";
+		out.label = "";
+		return out;
+	}
+
+	const funcao_info &funcao = it->second;
+	vector<string> itens;
+	string atual;
+	const char item_sep = '\x1e';
+	for (char ch : argumentos.label)
+	{
+		if (ch == item_sep)
+		{
+			itens.push_back(atual);
+			atual.clear();
+		}
+		else
+		{
+			atual += ch;
+		}
+	}
+	if (!atual.empty())
+		itens.push_back(atual);
+
+	vector<string> labels_ordenados(funcao.parametros.size());
+	vector<bool> preenchido(funcao.parametros.size(), false);
+	string codigo = argumentos.traducao;
+	bool usou_nomeado = false;
+	size_t proximo_posicional = 0;
+
+	for (size_t i = 0; i < itens.size(); ++i)
+	{
+		vector<string> campos;
+		string campo_atual;
+		const char field_sep = '\x1f';
+		for (char ch : itens[i])
+		{
+			if (ch == field_sep)
+			{
+				campos.push_back(campo_atual);
+				campo_atual.clear();
+			}
+			else
+			{
+				campo_atual += ch;
+			}
+		}
+		campos.push_back(campo_atual);
+		if (campos.size() != 3)
+			continue;
+
+		string nome_arg = campos[0];
+		string tipo_arg = campos[1];
+		string label_arg = campos[2];
+		int indice_param = -1;
+
+		if (!nome_arg.empty())
+		{
+			usou_nomeado = true;
+			for (size_t j = 0; j < funcao.parametros.size(); ++j)
+			{
+				if (funcao.parametros[j].nome == nome_arg)
+				{
+					indice_param = (int)j;
+					break;
+				}
+			}
+			if (indice_param < 0)
+			{
+				yyerror("Parâmetro nomeado '" + nome_arg + "' inexistente na função '" + nome + "'");
+				continue;
+			}
+		}
+		else
+		{
+			if (usou_nomeado)
+				 yyerror("Argumentos posicionais devem vir antes dos nomeados na função '" + nome + "'");
+			while (proximo_posicional < funcao.parametros.size() && preenchido[proximo_posicional])
+				++proximo_posicional;
+			if (proximo_posicional >= funcao.parametros.size())
+			{
+				yyerror("Quantidade de argumentos excede a função '" + nome + "'");
+				continue;
+			}
+			indice_param = (int)proximo_posicional++;
+		}
+
+		if (preenchido[(size_t)indice_param])
+		{
+			yyerror("Parâmetro '" + funcao.parametros[(size_t)indice_param].nome + "' informado mais de uma vez na função '" + nome + "'");
+			continue;
+		}
+
+		string tipo_param = funcao.parametros[(size_t)indice_param].tipo;
+		if (is_string(tipo_param) || is_string(tipo_arg))
+		{
+			usa_string = true;
+			if (!is_string(tipo_param) || !is_string(tipo_arg))
+				yyerror("Tipos incompatíveis no argumento '" + funcao.parametros[(size_t)indice_param].nome + "' da função '" + nome + "'");
+		}
+		else if (tipo_param == "float" && tipo_arg == "int")
+		{
+			string tmp = gentempcode("float");
+			codigo += "\t" + tmp + " = (float) " + label_arg + ";\n";
+			label_arg = tmp;
+		}
+		else if (tipo_param == "int" && tipo_arg == "float")
+		{
+			yyerror("Conversão explícita necessária no argumento '" + funcao.parametros[(size_t)indice_param].nome + "' da função '" + nome + "'");
+		}
+		else if (tipo_param != tipo_arg)
+		{
+			yyerror("Tipos incompatíveis no argumento '" + funcao.parametros[(size_t)indice_param].nome + "' da função '" + nome + "'");
+		}
+
+		labels_ordenados[(size_t)indice_param] = label_arg;
+		preenchido[(size_t)indice_param] = true;
+	}
+
+	for (size_t i = 0; i < preenchido.size(); ++i)
+	{
+		if (!preenchido[i])
+			yyerror("Argumento ausente para o parâmetro '" + funcao.parametros[i].nome + "' da função '" + nome + "'");
+	}
+
+	string chamada;
+	for (size_t i = 0; i < labels_ordenados.size(); ++i)
+	{
+		if (i != 0)
+			chamada += ", ";
+		chamada += labels_ordenados[i];
+	}
+
+	out.tipo = funcao.tipo_retorno;
+	out.label = gentempcode(funcao.tipo_retorno);
+	out.traducao = codigo + "\t" + out.label + " = " + nome + "(" + chamada + ");\n";
 	return out;
 }
 
@@ -1316,11 +1819,11 @@ atributos gerar_op_logica(const atributos& expressao_esquerda, const char* op, c
 	return out;
 }
 
-string gen_temp_declarations()
+string gen_temp_declarations_range(int inicio_exclusivo, int fim_inclusivo)
 {
 	string declarations;
 	string init_code;
-	for (int i = 1; i <= var_temp_qnt; i++){
+	for (int i = inicio_exclusivo + 1; i <= fim_inclusivo; i++){
 		string temp = "t" + to_string(i);
 		string tipo = tipos_temp[temp];
 		if (tipo.empty()) tipo = "int";
@@ -1328,7 +1831,7 @@ string gen_temp_declarations()
 		if (tipo == "string")
 			init_code += "\tfoca_str_init(&" + temp + ");\n";
 	}
-	if (var_temp_qnt > 0)
+	if (fim_inclusivo > inicio_exclusivo)
 		declarations += "\n";
 	if (!init_code.empty())
 		declarations += init_code + "\n";
@@ -1667,6 +2170,8 @@ int main(int argc, char* argv[])
 	escopos.clear();
 	push_scope();
 	tipos_temp.clear();
+	funcoes.clear();
+	funcao_atual = nullptr;
 	int rc = yyparse();
 	if (rc == 0 && erros == 0)
 		cout << codigo_gerado;

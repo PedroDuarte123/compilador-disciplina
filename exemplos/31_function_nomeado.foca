@@ -1,0 +1,5 @@
+function int calcula(int a, int b, int c) {
+    return a + b * c;
+}
+
+print(calcula(c: 4, a: 2, b: 3));

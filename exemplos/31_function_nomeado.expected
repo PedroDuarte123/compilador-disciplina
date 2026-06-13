@@ -1,0 +1,30 @@
+/*Compilador FOCA*/
+#include <stdio.h>
+
+int calcula(int p_calcula_a, int p_calcula_b, int p_calcula_c) {
+	int t1;
+	int t2;
+	int t3;
+
+	t1 = 0;
+	t2 = p_calcula_b * p_calcula_c;
+	t3 = p_calcula_a + t2;
+	t1 = t3;
+	goto L1;
+L1:
+	return t1;
+}
+
+int main(void) {
+	int t4;
+	int t5;
+	int t6;
+	int t7;
+
+	t4 = 4;
+	t5 = 2;
+	t6 = 3;
+	t7 = calcula(t5, t6, t4);
+	printf("%d", t7);
+	return 0;
+}
