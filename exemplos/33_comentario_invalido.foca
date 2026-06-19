@@ -1,0 +1,9 @@
+// comentário válido
+int x;
+x = 1;
+
+/* comentário multilinha inválido
+   sem fechar
+
+int a;
+a = 2;
