@@ -3,6 +3,7 @@
 %}
 
 %option noyywrap
+%x COMENTARIO
 
 ESPACO [ \t]
 DIGITO [0-9]
@@ -20,6 +21,13 @@ STRLIT \"([^\\\"\n]|\\.)*\"
 "\n"		{ linha++; }
 
 {DELIM} 	{}
+
+"//"[^\n]*       {}
+"/*"        { BEGIN(COMENTARIO); }
+<COMENTARIO>"*/" { BEGIN(INITIAL); }
+<COMENTARIO>"\n" { linha++; }
+<COMENTARIO>.    {}
+<COMENTARIO><<EOF>> { fprintf(stderr, "Erro: comentário não terminado na linha %d\n", linha); exit(-1); }
 
 "int"       { return TK_INT; }
 "float"     { return TK_FLOAT; }

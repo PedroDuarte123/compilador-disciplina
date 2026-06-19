@@ -1,0 +1,11 @@
+// comentário de linha int x;
+int x;
+x = 1;
+
+/* comentário
+   multilinha */
+float y;
+y = 2.5;
+
+// comentário 2
+print(x); // imprime x
