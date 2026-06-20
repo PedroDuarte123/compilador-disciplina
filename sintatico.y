@@ -101,6 +101,11 @@ string tipo_para_c(const string& t) {
 	if (t == "char")    return "char";
 	if (t == "float")   return "float";
 	if (t == "string")  return "foca_string";
+	if (t == "int_ptr") return "int*";
+	if (t == "float_ptr") return "float*";
+	if (t == "char_ptr") return "char*";
+	if (t == "string_ptr") return "foca_string*";
+	if (t == "const_char_ptr") return "const char*";
 	return "int";
 }
 
@@ -140,6 +145,9 @@ vector<string> split_print_args(const string& serializado);
 string formatador_por_tipo(const string& tipo);
 bool is_tipo_unario_aritmetico(const string& tipo);
 string literal_um_para_tipo(const string& tipo);
+string tipo_ponteiro_para_temp(const string& tipo);
+string gerar_temp_endereco(const string& label, const string& tipo, string& codigo);
+string gerar_temp_cstr(const string& label, string& codigo);
 string genlabel();
 string append_param_decl(const string& atual, const string& tipo, const string& nome);
 vector<parametro_funcao> parse_parametros_funcao(const string& serializado);
@@ -455,7 +463,11 @@ COMANDO		: TIPO TK_ID ';'
 					}
 
 					if (is_string(tipo_destino))
-						codigo += "\tfoca_str_copy(&" + funcao_atual->nome_retorno + ", &" + valor + ");\n";
+					{
+						string retorno_ptr = gerar_temp_endereco(funcao_atual->nome_retorno, "string", codigo);
+						string valor_ptr = gerar_temp_endereco(valor, "string", codigo);
+						codigo += "\tfoca_str_copy(" + retorno_ptr + ", " + valor_ptr + ");\n";
+					}
 					else
 						codigo += "\t" + funcao_atual->nome_retorno + " = " + valor + ";\n";
 					codigo += "\tgoto " + funcao_atual->label_retorno + ";\n";
@@ -532,14 +544,18 @@ COMANDO		: TIPO TK_ID ';'
 					if (is_string(sym->tipo))
 					{
 						usa_string = true;
-						$$.traducao = "\tfoca_str_scanline(&" + sym->nome_interno + ");\n";
+						string codigo;
+						string destino_ptr = gerar_temp_endereco(sym->nome_interno, sym->tipo, codigo);
+						$$.traducao = codigo + "\tfoca_str_scanline(" + destino_ptr + ");\n";
 					}
 					else if (sym->tipo == "float")
 					{
 						string tscan = gentempcode("int");
 						string tok = gentempcode("boolean");
 						string Lok = genlabel();
-						$$.traducao = "\t" + tscan + " = scanf(\"%f\", &" + sym->nome_interno + ");\n"
+						string codigo;
+						string destino_ptr = gerar_temp_endereco(sym->nome_interno, sym->tipo, codigo);
+						$$.traducao = codigo + "\t" + tscan + " = scanf(\"%f\", " + destino_ptr + ");\n"
 							+ "\t" + tok + " = (" + tscan + " == 1);\n"
 							+ "\tif (" + tok + ") goto " + Lok + ";\n"
 							+ "\t" + sym->nome_interno + " = 0;\n"
@@ -552,7 +568,9 @@ COMANDO		: TIPO TK_ID ';'
 						string tok = gentempcode("boolean");
 						string Lok = genlabel();
 						string Lend = genlabel();
-						$$.traducao = "\t" + tscan + " = scanf(\" %c\", &" + sym->nome_interno + ");\n"
+						string codigo;
+						string destino_ptr = gerar_temp_endereco(sym->nome_interno, sym->tipo, codigo);
+						$$.traducao = codigo + "\t" + tscan + " = scanf(\" %c\", " + destino_ptr + ");\n"
 							+ "\t" + tok + " = (" + tscan + " == 1);\n"
 							+ "\tif (" + tok + ") goto " + Lok + ";\n"
 							+ "\t" + sym->nome_interno + " = 0;\n"
@@ -568,7 +586,9 @@ COMANDO		: TIPO TK_ID ';'
 						string tscan = gentempcode("int");
 						string tok = gentempcode("boolean");
 						string Lok = genlabel();
-						$$.traducao = "\t" + tscan + " = scanf(\"%d\", &" + sym->nome_interno + ");\n"
+						string codigo;
+						string destino_ptr = gerar_temp_endereco(sym->nome_interno, sym->tipo, codigo);
+						$$.traducao = codigo + "\t" + tscan + " = scanf(\"%d\", " + destino_ptr + ");\n"
 							+ "\t" + tok + " = (" + tscan + " == 1);\n"
 							+ "\tif (" + tok + ") goto " + Lok + ";\n"
 							+ "\t" + sym->nome_interno + " = 0;\n"
@@ -945,8 +965,15 @@ E 			: E '+' E
 			| TK_STR_LIT
 			{
 				usa_string = true;
+				string tamanho = gentempcode("int");
+				string literal = gentempcode("const_char_ptr");
 				$$.label = gentempcode("string");
-				$$.traducao = "\tfoca_str_from_lit(&" + $$.label + ", " + $1.label + ", (int)(sizeof(" + $1.label + ") - 1));\n";
+				$$.traducao = "\t" + tamanho + " = (int)(sizeof(" + $1.label + ") - 1);\n"
+					+ "\t" + literal + " = " + $1.label + ";\n";
+				{
+					string destino_ptr = gerar_temp_endereco($$.label, "string", $$.traducao);
+					$$.traducao += "\tfoca_str_from_lit(" + destino_ptr + ", " + literal + ", " + tamanho + ");\n";
+				}
 				$$.tipo = "string";
 			}
 			| TK_ID TK_INC %prec POSTINC
@@ -1039,6 +1066,29 @@ string literal_um_para_tipo(const string& tipo)
 	if (tipo == "float")
 		return "1.0";
 	return "1";
+}
+
+string tipo_ponteiro_para_temp(const string& tipo)
+{
+	if (tipo == "float") return "float_ptr";
+	if (tipo == "char") return "char_ptr";
+	if (tipo == "string") return "string_ptr";
+	return "int_ptr";
+}
+
+string gerar_temp_endereco(const string& label, const string& tipo, string& codigo)
+{
+	string temp = gentempcode(tipo_ponteiro_para_temp(tipo));
+	codigo += "\t" + temp + " = &" + label + ";\n";
+	return temp;
+}
+
+string gerar_temp_cstr(const string& label, string& codigo)
+{
+	string ptr = gerar_temp_endereco(label, "string", codigo);
+	string cstr = gentempcode("const_char_ptr");
+	codigo += "\t" + cstr + " = foca_str_cstr(" + ptr + ");\n";
+	return cstr;
 }
 
 atributos gerar_unario_aritmetico(const char* op, const atributos& expr)
@@ -1154,7 +1204,11 @@ atributos gerar_atribuicao(const string& nome, const atributos& expr)
 	out.label = sym->nome_interno;
 	out.tipo = tipo_expressao_esquerda;
 	if (is_string(tipo_expressao_esquerda))
-		out.traducao = codigo_expressao_direita + "\tfoca_str_copy(&" + out.label + ", &" + label_expressao_direita + ");\n";
+	{
+		string destino_ptr = gerar_temp_endereco(out.label, "string", codigo_expressao_direita);
+		string origem_ptr = gerar_temp_endereco(label_expressao_direita, "string", codigo_expressao_direita);
+		out.traducao = codigo_expressao_direita + "\tfoca_str_copy(" + destino_ptr + ", " + origem_ptr + ");\n";
+	}
 	else
 		out.traducao = codigo_expressao_direita + "\t" + out.label + " = " + label_expressao_direita + ";\n";
 	return out;
@@ -1311,7 +1365,9 @@ string preparar_parametros_funcao()
 		if (param.tipo == "string")
 		{
 			usa_string = true;
-			codigo += "\tfoca_str_copy(&" + param.nome_interno + ", &" + param.nome_c + ");\n";
+			string destino_ptr = gerar_temp_endereco(param.nome_interno, "string", codigo);
+			string origem_ptr = gerar_temp_endereco(param.nome_c, "string", codigo);
+			codigo += "\tfoca_str_copy(" + destino_ptr + ", " + origem_ptr + ");\n";
 		}
 	}
 
@@ -1556,7 +1612,7 @@ string gerar_print_simples(const atributos& expr)
 	if (is_string(expr.tipo))
 	{
 		usa_string = true;
-		valor = "foca_str_cstr(&" + expr.label + ")";
+		valor = gerar_temp_cstr(expr.label, codigo);
 	}
 	codigo += "\tprintf(\"" + formato + "\", " + valor + ");\n";
 	return codigo;
@@ -1640,7 +1696,7 @@ string gerar_print_template(const string& literal, const atributos& args)
 				if (tipo == "string")
 				{
 					usa_string = true;
-					valor = "foca_str_cstr(&" + valor + ")";
+					valor = gerar_temp_cstr(valor, codigo);
 				}
 				codigo += "\tprintf(\"%" + string(1, spec) + "\", " + valor + ");\n";
 			}
@@ -1817,8 +1873,13 @@ atributos gerar_op_concat(const atributos& expressao_esquerda, const atributos& 
 	}
 	out.tipo = "string";
 	out.label = gentempcode("string");
-	out.traducao = expressao_esquerda.traducao + expressao_direita.traducao +
-		"\tfoca_str_concat(&" + out.label + ", &" + expressao_esquerda.label + ", &" + expressao_direita.label + ");\n";
+	out.traducao = expressao_esquerda.traducao + expressao_direita.traducao;
+	{
+		string destino_ptr = gerar_temp_endereco(out.label, "string", out.traducao);
+		string esquerda_ptr = gerar_temp_endereco(expressao_esquerda.label, "string", out.traducao);
+		string direita_ptr = gerar_temp_endereco(expressao_direita.label, "string", out.traducao);
+		out.traducao += "\tfoca_str_concat(" + destino_ptr + ", " + esquerda_ptr + ", " + direita_ptr + ");\n";
+	}
 	return out;
 }
 
@@ -1841,10 +1902,16 @@ atributos gerar_op_relacional(const atributos& expressao_esquerda, const char* o
 			out.tipo = "boolean";
 			out.label = gentempcode("boolean");
 			out.traducao = expressao_esquerda.traducao + expressao_direita.traducao;
+			string esquerda_ptr = gerar_temp_endereco(expressao_esquerda.label, "string", out.traducao);
+			string direita_ptr = gerar_temp_endereco(expressao_direita.label, "string", out.traducao);
 			if (sop == "==")
-				out.traducao += "\t" + out.label + " = foca_str_eq(&" + expressao_esquerda.label + ", &" + expressao_direita.label + ");\n";
+				out.traducao += "\t" + out.label + " = foca_str_eq(" + esquerda_ptr + ", " + direita_ptr + ");\n";
 			else
-				out.traducao += "\t" + out.label + " = !foca_str_eq(&" + expressao_esquerda.label + ", &" + expressao_direita.label + ");\n";
+			{
+				string eq_tmp = gentempcode("boolean");
+				out.traducao += "\t" + eq_tmp + " = foca_str_eq(" + esquerda_ptr + ", " + direita_ptr + ");\n";
+				out.traducao += "\t" + out.label + " = !" + eq_tmp + ";\n";
+			}
 			return out;
 		}
 		yyerror("Operador relacional inválido com string");
@@ -1900,7 +1967,11 @@ string gen_temp_declarations_range(int inicio_exclusivo, int fim_inclusivo)
 		if (tipo.empty()) tipo = "int";
 		declarations += "\t" + tipo_para_c(tipo) + " " + temp + ";\n";
 		if (tipo == "string")
-			init_code += "\tfoca_str_init(&" + temp + ");\n";
+		{
+			init_code += "\t" + temp + ".data = NULL;\n";
+			init_code += "\t" + temp + ".len = 0;\n";
+			init_code += "\t" + temp + ".cap = 0;\n";
+		}
 	}
 	if (fim_inclusivo > inicio_exclusivo)
 		declarations += "\n";
@@ -1942,6 +2013,8 @@ string gen_string_runtime_support()
 		"static void foca_str_reserve(foca_string *s, int needed_cap) {\n"
 		"\tint new_cap;\n"
 		"\tchar *p;\n"
+		"\tchar *old_data;\n"
+		"\tsize_t alloc_size;\n"
 		"\tint t1;\n"
 		"\tt1 = (needed_cap <= s->cap);\n"
 		"\tif (t1) goto L_reserve_end;\n"
@@ -1957,7 +2030,9 @@ string gen_string_runtime_support()
 		"\tnew_cap = new_cap * 2;\n"
 		"\tgoto L_reserve_loop_check;\n"
 		"L_reserve_realloc:\n"
-		"\tp = (char*)realloc(s->data, (size_t)new_cap);\n"
+		"\told_data = s->data;\n"
+		"\talloc_size = (size_t)new_cap;\n"
+		"\tp = (char*)realloc(old_data, alloc_size);\n"
 		"\tt1 = (p != NULL);\n"
 		"\tif (t1) goto L_reserve_ok;\n"
 		"\tfprintf(stderr, \"Erro: sem memória ao alocar string\\n\");\n"
@@ -1994,10 +2069,12 @@ string gen_string_runtime_support()
 		"}\n\n"
 		"static void foca_str_from_lit(foca_string *s, const char *lit, int lit_len) {\n"
 		"\tint needed;\n"
+		"\tchar *dst_data;\n"
 		"\tchar *end;\n"
 		"\tneeded = lit_len + 1;\n"
 		"\tfoca_str_reserve(s, needed);\n"
-		"\tend = foca_strcopy_end(s->data, lit);\n"
+		"\tdst_data = s->data;\n"
+		"\tend = foca_strcopy_end(dst_data, lit);\n"
 		"\t(void)end;\n"
 		"\ts->len = lit_len;\n"
 		"\treturn;\n"
@@ -2005,6 +2082,7 @@ string gen_string_runtime_support()
 		"static void foca_str_copy(foca_string *dst, const foca_string *src) {\n"
 		"\tint needed;\n"
 		"\tconst char *sp;\n"
+		"\tchar *dst_data;\n"
 		"\tchar *end;\n"
 		"\tint t1;\n"
 		"\tneeded = src->len + 1;\n"
@@ -2016,7 +2094,8 @@ string gen_string_runtime_support()
 		"L_copy_src_ok:\n"
 		"\tsp = src->data;\n"
 		"L_copy_do:\n"
-		"\tend = foca_strcopy_end(dst->data, sp);\n"
+		"\tdst_data = dst->data;\n"
+		"\tend = foca_strcopy_end(dst_data, sp);\n"
 		"\t(void)end;\n"
 		"\tdst->len = src->len;\n"
 		"\treturn;\n"
@@ -2025,14 +2104,17 @@ string gen_string_runtime_support()
 		"\tint alen;\n"
 		"\tint blen;\n"
 		"\tint new_len;\n"
+		"\tint needed;\n"
 		"\tconst char *ap;\n"
 		"\tconst char *bp;\n"
+		"\tchar *dst_data;\n"
 		"\tchar *end;\n"
 		"\tint t1;\n"
 		"\talen = a->len;\n"
 		"\tblen = b->len;\n"
 		"\tnew_len = alen + blen;\n"
-		"\tfoca_str_reserve(dst, new_len + 1);\n"
+		"\tneeded = new_len + 1;\n"
+		"\tfoca_str_reserve(dst, needed);\n"
 		"\tt1 = (a->data != NULL);\n"
 		"\tif (t1) goto L_cat_a_ok;\n"
 		"\tap = \"\";\n"
@@ -2047,7 +2129,8 @@ string gen_string_runtime_support()
 		"L_cat_b_ok:\n"
 		"\tbp = b->data;\n"
 		"L_cat_b_done:\n"
-		"\tend = foca_strcopy_end(dst->data, ap);\n"
+		"\tdst_data = dst->data;\n"
+		"\tend = foca_strcopy_end(dst_data, ap);\n"
 		"\tend = foca_strcopy_end(end, bp);\n"
 		"\t(void)end;\n"
 		"\tdst->len = new_len;\n"
