@@ -72,6 +72,7 @@ STRLIT \"([^\\\"\n]|\\.)*\"
 [+]			{ return *yytext; }
 [-]         { return *yytext; }
 [*]         { return *yytext; }
+[\^]        { return *yytext; }
 [/]         { return *yytext; }
 [(]         { return *yytext; }
 [)]         { return *yytext; }
