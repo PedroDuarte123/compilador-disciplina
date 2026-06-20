@@ -935,8 +935,10 @@ E 			: E '+' E
 			| TK_STR_LIT
 			{
 				usa_string = true;
+				string tamanho = gentempcode("int");
 				$$.label = gentempcode("string");
-				$$.traducao = "\tfoca_str_from_lit(&" + $$.label + ", " + $1.label + ", (int)(sizeof(" + $1.label + ") - 1));\n";
+				$$.traducao = "\t" + tamanho + " = (int)(sizeof(" + $1.label + ") - 1);\n"
+					+ "\tfoca_str_from_lit(&" + $$.label + ", " + $1.label + ", " + tamanho + ");\n";
 				$$.tipo = "string";
 			}
 			| TK_ID TK_INC %prec POSTINC

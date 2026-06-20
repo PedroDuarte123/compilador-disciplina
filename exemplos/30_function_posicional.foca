@@ -2,4 +2,9 @@ function int soma(int a, int b) {
     return a + b;
 }
 
+function string saudacao(string nome){
+    return nome;
+}
+
 print(soma(1, 2));
+print(saudacao("Pedro"));
