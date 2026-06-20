@@ -106,6 +106,7 @@ string tipo_para_c(const string& t) {
 
 string gen_string_runtime_support();
 string gen_io_runtime_support();
+string gen_potencia_runtime_support();
 
 int yylex(void);
 void yyerror(string);
@@ -123,6 +124,7 @@ void enter_loop(const string& break_label, const string& continue_label);
 void exit_loop();
 const loop_context& current_loop();
 atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
+atributos gerar_op_potencia(const atributos& expressao_esquerda, const atributos& expressao_direita);
 atributos gerar_op_soma(const atributos& expressao_esquerda, const atributos& expressao_direita);
 atributos gerar_op_relacional(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
 atributos gerar_op_logica(const atributos& expressao_esquerda, const char* op, const atributos& expressao_direita);
@@ -203,6 +205,7 @@ string literal_padrao_tipo(const string& tipo);
 %left '*' '/'
 %right TK_NOT UPLUS UMINUS PREINC PREDEC
 %left POSTINC POSTDEC
+%right '^'
 %nonassoc TK_IFAKE // token fake para resolver ambiguidade do else (declarado antes, tem precedência menor)
 %nonassoc TK_ELSE // precedência maior (declarado depois) -> resolver dangling else
 
@@ -217,6 +220,7 @@ S			: LISTA_FUNCOES LISTA_COMANDOS
 					codigo_gerado += "/*Compilador FOCA*/\n";
 					codigo_gerado += "#include <stdio.h>\n";
 					codigo_gerado += "#include <stdlib.h>\n\n";
+					codigo_gerado += gen_potencia_runtime_support();
 					string rt = gen_string_runtime_support();
 					codigo_gerado += rt;
 					if (usa_io)
@@ -228,6 +232,7 @@ S			: LISTA_FUNCOES LISTA_COMANDOS
 				{
 					codigo_gerado += "/*Compilador FOCA*/\n";
 					codigo_gerado += "#include <stdio.h>\n\n";
+					codigo_gerado += gen_potencia_runtime_support();
 					codigo_gerado += gen_io_runtime_support();
 					codigo_gerado += $1.traducao;
 					codigo_gerado += "int main(void) {\n";
@@ -236,6 +241,7 @@ S			: LISTA_FUNCOES LISTA_COMANDOS
 				{
 					codigo_gerado += "/*Compilador FOCA*/\n";
 					codigo_gerado += "#include <stdio.h>\n";
+					codigo_gerado += gen_potencia_runtime_support();
 					codigo_gerado += "\n";
 					codigo_gerado += $1.traducao;
 					codigo_gerado += "int main(void) {\n";
@@ -805,6 +811,10 @@ E 			: E '+' E
 			| E '*' E
 			{
 				$$ = gerar_op_aritmetica($1, "*", $3);
+			}
+			| E '^' E
+			{
+				$$ = gerar_op_potencia($1, $3);
 			}
 			| E '/' E
 			{
@@ -1730,6 +1740,67 @@ atributos gerar_op_aritmetica(const atributos& expressao_esquerda, const char* o
 	out.traducao = codigo_expressao_esquerda + codigo_expressao_direita + "\t" + out.label +
 		" = " + label_expressao_esquerda + " " + op + " " + label_expressao_direita + ";\n";
 	return out;
+}
+
+atributos gerar_op_potencia(const atributos& expressao_esquerda, const atributos& expressao_direita)
+{
+	atributos out;
+	if (is_string(expressao_esquerda.tipo) || is_string(expressao_direita.tipo))
+	{
+		yyerror("Operação de exponenciação inválida com string");
+		out.tipo = "int";
+		out.label = "";
+		out.traducao = expressao_esquerda.traducao + expressao_direita.traducao;
+		return out;
+	}
+
+	if (expressao_direita.tipo == "float") // so aceita expoentes inteiros
+	{
+		yyerror("Expoente de potência deve ser inteiro");
+		out.tipo = "int";
+		out.label = "";
+		out.traducao = expressao_esquerda.traducao + expressao_direita.traducao;
+		return out;
+	}
+
+	string tipo_res = tipo_resultado_aritmetico(expressao_esquerda.tipo, expressao_direita.tipo);
+	string codigo_expressao_esquerda = expressao_esquerda.traducao;
+	string codigo_expressao_direita = expressao_direita.traducao;
+	string label_expressao_esquerda = expressao_esquerda.label;
+	string label_expressao_direita = expressao_direita.label;
+	if (tipo_res == "float")
+	{
+		label_expressao_esquerda = upcast_para_float(label_expressao_esquerda, expressao_esquerda.tipo, codigo_expressao_esquerda);
+		ensure_float_temp_for_literal(label_expressao_esquerda, codigo_expressao_esquerda, expressao_esquerda);
+	}
+
+	out.tipo = tipo_res;
+	out.label = gentempcode(tipo_res);
+	out.traducao = codigo_expressao_esquerda + codigo_expressao_direita + "\t" + out.label +
+		" = (" + tipo_para_c(tipo_res) + ") pot(" + label_expressao_esquerda + ", (int)(" + label_expressao_direita + "));\n";
+	return out;
+}
+
+string gen_potencia_runtime_support()
+{
+	return
+		"double pot(double base, int exp) {\n"
+		"\tdouble resultado = 1.0;\n" // inicia com 0
+		"\tint n;\n\n"
+		"\tif (exp < 0) {\n" // pega módulo do expoente (em caso de negativo)
+		"\t\tn = -exp;\n"
+		"\t} else {\n"
+		"\t\tn = exp;\n"
+		"\t}\n\n"
+		"\twhile (n > 0) {\n"
+		"\t\tresultado *= base;\n" // multiplica a base por ela mesma 
+		"\t\tn--;\n"
+		"\t}\n\n"
+		"\tif (exp < 0) {\n"
+		"\t\treturn 1.0 / resultado;\n" // inverso do resultado se o expoente for negativo
+		"\t}\n\n"
+		"\treturn resultado;\n"
+		"}\n\n";
 }
 
 atributos gerar_op_concat(const atributos& expressao_esquerda, const atributos& expressao_direita)
