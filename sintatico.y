@@ -12,6 +12,7 @@ int linha = 1;
 string codigo_gerado;
 bool usa_string = false;
 bool usa_io = false;
+bool usa_pot = false;
 int erros = 0;
 int label_qnt = 0;
 string codigo_funcoes;
@@ -228,7 +229,8 @@ S			: LISTA_FUNCOES LISTA_COMANDOS
 					codigo_gerado += "/*Compilador FOCA*/\n";
 					codigo_gerado += "#include <stdio.h>\n";
 					codigo_gerado += "#include <stdlib.h>\n\n";
-					codigo_gerado += gen_potencia_runtime_support();
+					if (usa_pot)
+						codigo_gerado += gen_potencia_runtime_support();
 					string rt = gen_string_runtime_support();
 					codigo_gerado += rt;
 					if (usa_io)
@@ -240,7 +242,8 @@ S			: LISTA_FUNCOES LISTA_COMANDOS
 				{
 					codigo_gerado += "/*Compilador FOCA*/\n";
 					codigo_gerado += "#include <stdio.h>\n\n";
-					codigo_gerado += gen_potencia_runtime_support();
+					if (usa_pot)
+						codigo_gerado += gen_potencia_runtime_support();
 					codigo_gerado += gen_io_runtime_support();
 					codigo_gerado += $1.traducao;
 					codigo_gerado += "int main(void) {\n";
@@ -249,7 +252,8 @@ S			: LISTA_FUNCOES LISTA_COMANDOS
 				{
 					codigo_gerado += "/*Compilador FOCA*/\n";
 					codigo_gerado += "#include <stdio.h>\n";
-					codigo_gerado += gen_potencia_runtime_support();
+					if (usa_pot)
+						codigo_gerado += gen_potencia_runtime_support();
 					codigo_gerado += "\n";
 					codigo_gerado += $1.traducao;
 					codigo_gerado += "int main(void) {\n";
@@ -1830,6 +1834,7 @@ atributos gerar_op_potencia(const atributos& expressao_esquerda, const atributos
 		ensure_float_temp_for_literal(label_expressao_esquerda, codigo_expressao_esquerda, expressao_esquerda);
 	}
 
+	usa_pot = true;
 	out.tipo = tipo_res;
 	out.label = gentempcode(tipo_res);
 	out.traducao = codigo_expressao_esquerda + codigo_expressao_direita + "\t" + out.label +
@@ -1839,24 +1844,34 @@ atributos gerar_op_potencia(const atributos& expressao_esquerda, const atributos
 
 string gen_potencia_runtime_support()
 {
-	return
+	return string(
 		"double pot(double base, int exp) {\n"
-		"\tdouble resultado = 1.0;\n" // inicia com 0
-		"\tint n;\n\n"
-		"\tif (exp < 0) {\n" // pega módulo do expoente (em caso de negativo)
-		"\t\tn = -exp;\n"
-		"\t} else {\n"
-		"\t\tn = exp;\n"
-		"\t}\n\n"
-		"\twhile (n > 0) {\n"
-		"\t\tresultado *= base;\n" // multiplica a base por ela mesma 
-		"\t\tn--;\n"
-		"\t}\n\n"
-		"\tif (exp < 0) {\n"
-		"\t\treturn 1.0 / resultado;\n" // inverso do resultado se o expoente for negativo
-		"\t}\n\n"
+		"\tdouble resultado;\n"
+		"\tint n;\n"
+		"\tint pot_t1;\n"
+		"\tdouble pot_t2;\n\n"
+		"\tresultado = 1.0;\n" // inicia com 1, para exp 0 retornar 1
+		"\tpot_t1 = (exp < 0);\n" // pega módulo do expoente (em caso de negativo)
+		"\tif (pot_t1) goto L_pot_exp_negativo;\n"
+		"\tn = exp;\n"
+		"\tgoto L_pot_loop_teste;\n"
+		"L_pot_exp_negativo:\n"
+		"\tn = -exp;\n"
+		"L_pot_loop_teste:\n"
+		"\tpot_t1 = (n > 0);\n"
+		"\tif (!pot_t1) goto L_pot_loop_fim;\n"
+		"\tresultado = resultado * base;\n" // multiplica a base por ela mesma 
+		"\tn = n - 1;\n"
+		"\tgoto L_pot_loop_teste;\n"
+		"L_pot_loop_fim:\n"
+		"\tpot_t1 = (exp < 0);\n"
+		"\tif (!pot_t1) goto L_pot_retorna_resultado;\n"
+		"\tpot_t2 = 1.0 / resultado;\n" // inverso do resultado se o expoente for negativo
+		"\treturn pot_t2;\n"
+		"L_pot_retorna_resultado:\n"
 		"\treturn resultado;\n"
-		"}\n\n";
+		"}\n\n"
+	);
 }
 
 atributos gerar_op_concat(const atributos& expressao_esquerda, const atributos& expressao_direita)
