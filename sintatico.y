@@ -121,6 +121,7 @@ int yylex(void);
 void yyerror(string);
 string gentempcode(string tipo = "int");
 string gen_temp_declarations_range(int inicio_exclusivo, int fim_inclusivo);
+string gen_temp_cleanup_range(int inicio_exclusivo, int fim_inclusivo, const string& exceto = "");
 void is_declarado(string);
 void is_inicializado(string);
 void atribuir_temporario(string);
@@ -267,11 +268,14 @@ S			: LISTA_FUNCOES LISTA_COMANDOS
 
 				{
 					int inicio_main = $1.extra.empty() ? 0 : stoi($1.extra);
+					string cleanup_main = gen_temp_cleanup_range(inicio_main, var_temp_qnt);
 					string decls = gen_temp_declarations_range(inicio_main, var_temp_qnt);
 					codigo_gerado += decls;
+					$2.extra = cleanup_main;
 				}
 
 				codigo_gerado += $2.traducao;
+				codigo_gerado += $2.extra;
 
 				codigo_gerado += "\treturn 0;\n}\n";
 			}
@@ -1550,6 +1554,7 @@ string finalizar_funcao(const string& traducao_corpo)
 		return "";
 
 	funcao_atual->temp_fim = var_temp_qnt;
+	string cleanup = gen_temp_cleanup_range(funcao_atual->temp_inicio, funcao_atual->temp_fim, funcao_atual->nome_retorno);
 	string assinatura = tipo_para_c(funcao_atual->tipo_retorno) + " " + funcao_atual->nome + "(";
 	for (size_t i = 0; i < funcao_atual->parametros.size(); ++i)
 	{
@@ -1560,9 +1565,10 @@ string finalizar_funcao(const string& traducao_corpo)
 	assinatura += ") {\n";
 
 	string codigo = assinatura;
-	codigo += gen_temp_declarations_range(funcao_atual->temp_inicio, funcao_atual->temp_fim);
+	codigo += gen_temp_declarations_range(funcao_atual->temp_inicio, var_temp_qnt);
 	codigo += traducao_corpo;
 	codigo += funcao_atual->label_retorno + ":\n";
+	codigo += cleanup;
 	codigo += "\treturn " + funcao_atual->nome_retorno + ";\n";
 	codigo += "}\n\n";
 	return codigo;
@@ -2158,6 +2164,25 @@ string gen_temp_declarations_range(int inicio_exclusivo, int fim_inclusivo)
 	return declarations;
 }
 
+string gen_temp_cleanup_range(int inicio_exclusivo, int fim_inclusivo, const string& exceto)
+{
+	string cleanup;
+	for (int i = fim_inclusivo; i > inicio_exclusivo; i--)
+	{
+		string temp = "t" + to_string(i);
+		string tipo = tipos_temp[temp];
+		if (tipo == "string" && temp != exceto)
+		{
+			string ptr = gentempcode("string_ptr");
+			cleanup += "\t" + ptr + " = &" + temp + ";\n";
+			cleanup += "\tfoca_str_free(" + ptr + ");\n";
+		}
+	}
+	if (!cleanup.empty())
+		cleanup += "\n";
+	return cleanup;
+}
+
 string gen_string_runtime_support()
 {
 	return string(
@@ -2170,6 +2195,23 @@ string gen_string_runtime_support()
 		"\ts->data = NULL;\n"
 		"\ts->len = 0;\n"
 		"\ts->cap = 0;\n"
+		"}\n\n"
+		"static void foca_str_free(foca_string *s) {\n"
+		"\tchar *p;\n"
+		"\tint t1;\n"
+		"\tt1 = (s != NULL);\n"
+		"\tif (t1) goto L_free_check_data;\n"
+		"\treturn;\n"
+		"L_free_check_data:\n"
+		"\tt1 = (s->data != NULL);\n"
+		"\tif (!t1) goto L_free_reset;\n"
+		"\tp = s->data;\n"
+		"\tfree(p);\n"
+		"L_free_reset:\n"
+		"\ts->data = NULL;\n"
+		"\ts->len = 0;\n"
+		"\ts->cap = 0;\n"
+		"\treturn;\n"
 		"}\n\n"
 		"static const char* foca_str_cstr(const foca_string *s) {\n"
 		"\tconst char *p;\n"
