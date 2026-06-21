@@ -1,0 +1,18 @@
+enum { PEQUENO = 1, MEDIO, GRANDE };
+int tamanho;
+tamanho = GRANDE;
+
+switch (tamanho) {
+	case PEQUENO: {
+		print("pequeno\n");
+		break;
+	}
+	case MEDIO: {
+		print("medio\n");
+		break;
+	}
+	case GRANDE: {
+		print("grande\n");
+		break;
+	}
+}

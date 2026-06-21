@@ -1,0 +1,16 @@
+int t1;
+
+t1 = 3;
+L4:
+if (t1 != 1) goto L3;
+printf("pequeno\n");
+goto L1;
+L3:
+if (t1 != 2) goto L2;
+printf("medio\n");
+goto L1;
+L2:
+if (t1 != 3) goto L1;
+printf("grande\n");
+goto L1;
+L1:

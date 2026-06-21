@@ -1,0 +1,10 @@
+enum Cor { VERMELHO, VERDE=2, AZUL };
+print(VERMELHO);
+print("\n");
+print(VERDE);
+print("\n");
+print(AZUL);
+AZUL = 10;
+
+
+

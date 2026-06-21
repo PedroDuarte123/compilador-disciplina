@@ -49,6 +49,7 @@ STRLIT \"([^\\\"\n]|\\.)*\"
 "continue"  { return TK_CONTINUE; }
 "function"  { return TK_FUNCTION; }
 "return"    { return TK_RETURN; }
+"enum"      { return TK_ENUM; }
 "true"      { yylval.label = "1"; return TK_BOOL_LIT; }
 "false"     { yylval.label = "0"; return TK_BOOL_LIT; }
 "'"[^'\\\n]"'"   { yylval.label = yytext; return TK_CHAR_LIT; }
