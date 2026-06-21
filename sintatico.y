@@ -1851,7 +1851,7 @@ string gen_potencia_runtime_support()
 		"\tint pot_t1;\n"
 		"\tdouble pot_t2;\n\n"
 		"\tresultado = 1.0;\n" // inicia com 1, para exp 0 retornar 1
-		"\tpot_t1 = (exp < 0);\n" // pega mÃ³dulo do expoente (em caso de negativo)
+		"\tpot_t1 = (exp < 0);\n" // pega módulo do expoente (em caso de negativo)
 		"\tif (pot_t1) goto L_pot_exp_negativo;\n"
 		"\tn = exp;\n"
 		"\tgoto L_pot_loop_teste;\n"
