@@ -81,6 +81,8 @@ map<string, string> tipos_temp;
 
 static vector< map<string, simbolo> > escopos;
 static map<string, funcao_info> funcoes;
+static map<string, bool> enums_declarados;
+static map<string, bool> enum_constantes;
 static funcao_info* funcao_atual = nullptr;
 
 static void push_scope();
@@ -92,6 +94,7 @@ const simbolo* buscar_simbolo_const(const string& nome);
 
 bool is_tipo_valido(const string& t) { return t == "int" || t == "float" || t == "char" || t == "boolean" || t == "string"; }
 bool is_string(const string& t) { return t == "string"; }
+bool is_enum_constante(const string& nome) { return enum_constantes.find(nome) != enum_constantes.end(); }
 string tipo_resultado_aritmetico(const string& a, const string& b)
 {
 	if (a == "float" || b == "float") return "float";
@@ -151,6 +154,8 @@ string gerar_temp_endereco(const string& label, const string& tipo, string& codi
 string gerar_temp_cstr(const string& label, string& codigo);
 string genlabel();
 string append_param_decl(const string& atual, const string& tipo, const string& nome);
+string append_enum_item(const string& atual, const string& nome, const string& valor);
+void registrar_enum(const string& nome, const string& itens_serializados);
 vector<parametro_funcao> parse_parametros_funcao(const string& serializado);
 void registrar_funcao(const string& nome, const string& tipo_retorno, const string& params_serializados);
 void iniciar_funcao(const string& nome);
@@ -181,6 +186,7 @@ string literal_padrao_tipo(const string& tipo);
 %token TK_CONTINUE
 %token TK_FUNCTION
 %token TK_RETURN
+%token TK_ENUM
 %token TK_BREAK
 %token TK_SWITCH
 %token TK_CASE
@@ -306,6 +312,13 @@ TIPO		: TK_INT
 				usa_string = true;
 				$$.tipo = "string";
 			}
+			| TK_ENUM TK_ID
+			{
+				// Enum com nome é tratado como int, o nome serve só para validar a declaração
+				if (enums_declarados.find($2.label) == enums_declarados.end())
+					yyerror("Enum '" + $2.label + "' não declarado");
+				$$.tipo = "int";
+			}
 			;
 
 LISTA_COMANDOS	: LISTA_COMANDOS COMANDO
@@ -385,6 +398,10 @@ COMANDO		: TIPO TK_ID ';'
 				{
 					cur.emplace($2.label, simbolo($2.label, $1.tipo, "", false));
 				}
+				$$.traducao = "";
+			}
+			| ENUM_DECL
+			{
 				$$.traducao = "";
 			}
 			| TK_IF '(' E ')' COMANDO %prec TK_IFAKE // %prec usa a precedencia (menor) do token fake TK_IFAKE (evita ambiguidade do else)
@@ -542,68 +559,112 @@ COMANDO		: TIPO TK_ID ';'
 				}
 				else
 				{
-					usa_io = true;
-					atribuir_temporario($2.label);
-					sym->inicializado = true;
-					if (is_string(sym->tipo))
+					if (is_enum_constante($2.label))
 					{
-						usa_string = true;
-						string codigo;
-						string destino_ptr = gerar_temp_endereco(sym->nome_interno, sym->tipo, codigo);
-						$$.traducao = codigo + "\tfoca_str_scanline(" + destino_ptr + ");\n";
-					}
-					else if (sym->tipo == "float")
-					{
-						string tscan = gentempcode("int");
-						string tok = gentempcode("boolean");
-						string Lok = genlabel();
-						string codigo;
-						string destino_ptr = gerar_temp_endereco(sym->nome_interno, sym->tipo, codigo);
-						$$.traducao = codigo + "\t" + tscan + " = scanf(\"%f\", " + destino_ptr + ");\n"
-							+ "\t" + tok + " = (" + tscan + " == 1);\n"
-							+ "\tif (" + tok + ") goto " + Lok + ";\n"
-							+ "\t" + sym->nome_interno + " = 0;\n"
-							+ "\tfoca_discard_line();\n"
-							+ Lok + ":\n";
-					}
-					else if (sym->tipo == "char")
-					{
-						string tscan = gentempcode("int");
-						string tok = gentempcode("boolean");
-						string Lok = genlabel();
-						string Lend = genlabel();
-						string codigo;
-						string destino_ptr = gerar_temp_endereco(sym->nome_interno, sym->tipo, codigo);
-						$$.traducao = codigo + "\t" + tscan + " = scanf(\" %c\", " + destino_ptr + ");\n"
-							+ "\t" + tok + " = (" + tscan + " == 1);\n"
-							+ "\tif (" + tok + ") goto " + Lok + ";\n"
-							+ "\t" + sym->nome_interno + " = 0;\n"
-							+ "\tfoca_discard_line();\n"
-							+ "\tgoto " + Lend + ";\n"
-							+ Lok + ":\n"
-							+ "\tfoca_discard_line();\n"
-							+ Lend + ":\n";
+						yyerror("Constante de enum '" + $2.label + "' não pode ser alterada");
+						$$.traducao = "";
 					}
 					else
 					{
-						/* int/boolean */
-						string tscan = gentempcode("int");
-						string tok = gentempcode("boolean");
-						string Lok = genlabel();
-						string codigo;
-						string destino_ptr = gerar_temp_endereco(sym->nome_interno, sym->tipo, codigo);
-						$$.traducao = codigo + "\t" + tscan + " = scanf(\"%d\", " + destino_ptr + ");\n"
-							+ "\t" + tok + " = (" + tscan + " == 1);\n"
-							+ "\tif (" + tok + ") goto " + Lok + ";\n"
-							+ "\t" + sym->nome_interno + " = 0;\n"
-							+ "\tfoca_discard_line();\n"
-							+ Lok + ":\n";
+						usa_io = true;
+						atribuir_temporario($2.label);
+						sym->inicializado = true;
+						if (is_string(sym->tipo))
+						{
+							usa_string = true;
+							string codigo;
+							string destino_ptr = gerar_temp_endereco(sym->nome_interno, sym->tipo, codigo);
+							$$.traducao = codigo + "\tfoca_str_scanline(" + destino_ptr + ");\n";
+						}
+						else if (sym->tipo == "float")
+						{
+							string tscan = gentempcode("int");
+							string tok = gentempcode("boolean");
+							string Lok = genlabel();
+							string codigo;
+							string destino_ptr = gerar_temp_endereco(sym->nome_interno, sym->tipo, codigo);
+							$$.traducao = codigo + "\t" + tscan + " = scanf(\"%f\", " + destino_ptr + ");\n"
+								+ "\t" + tok + " = (" + tscan + " == 1);\n"
+								+ "\tif (" + tok + ") goto " + Lok + ";\n"
+								+ "\t" + sym->nome_interno + " = 0;\n"
+								+ "\tfoca_discard_line();\n"
+								+ Lok + ":\n";
+						}
+						else if (sym->tipo == "char")
+						{
+							string tscan = gentempcode("int");
+							string tok = gentempcode("boolean");
+							string Lok = genlabel();
+							string Lend = genlabel();
+							string codigo;
+							string destino_ptr = gerar_temp_endereco(sym->nome_interno, sym->tipo, codigo);
+							$$.traducao = codigo + "\t" + tscan + " = scanf(\" %c\", " + destino_ptr + ");\n"
+								+ "\t" + tok + " = (" + tscan + " == 1);\n"
+								+ "\tif (" + tok + ") goto " + Lok + ";\n"
+								+ "\t" + sym->nome_interno + " = 0;\n"
+								+ "\tfoca_discard_line();\n"
+								+ "\tgoto " + Lend + ";\n"
+								+ Lok + ":\n"
+								+ "\tfoca_discard_line();\n"
+								+ Lend + ":\n";
+						}
+						else
+						{
+							/* int/boolean */
+							string tscan = gentempcode("int");
+							string tok = gentempcode("boolean");
+							string Lok = genlabel();
+							string codigo;
+							string destino_ptr = gerar_temp_endereco(sym->nome_interno, sym->tipo, codigo);
+							$$.traducao = codigo + "\t" + tscan + " = scanf(\"%d\", " + destino_ptr + ");\n"
+								+ "\t" + tok + " = (" + tscan + " == 1);\n"
+								+ "\tif (" + tok + ") goto " + Lok + ";\n"
+								+ "\t" + sym->nome_interno + " = 0;\n"
+								+ "\tfoca_discard_line();\n"
+								+ Lok + ":\n";
+						}
 					}
 				}
 			}
 			| E ';'
 			{
 				$$.traducao = $1.traducao;
+			}
+			;
+
+ENUM_DECL	: TK_ENUM TK_ID '{' ENUM_ITENS '}' ';'
+			{
+				// Registra enum com nome e seus itens como constantes int
+				registrar_enum($2.label, $4.label);
+				$$.traducao = "";
+			}
+			| TK_ENUM '{' ENUM_ITENS '}' ';'
+			{
+				// Enum sem nome registra apenas as constantes
+				registrar_enum("", $3.label);
+				$$.traducao = "";
+			}
+			;
+
+ENUM_ITENS	: ENUM_ITEM // cria lista de itens enum
+			{
+				$$.label = append_enum_item("", $1.label, $1.extra);
+			}
+			| ENUM_ITENS ',' ENUM_ITEM
+			{
+				$$.label = append_enum_item($1.label, $3.label, $3.extra);
+			}
+			;
+
+ENUM_ITEM	: TK_ID
+			{
+				$$.label = $1.label;
+				$$.extra = ""; // caso adicione o valor explicitamente
+			}
+			| TK_ID '=' TK_NUM
+			{
+				$$.label = $1.label;
+				$$.extra = $3.label;
 			}
 			;
 
@@ -1139,6 +1200,15 @@ atributos gerar_inc_dec(const string& nome, bool incrementar, bool prefixo)
 		return out;
 	}
 
+	if (is_enum_constante(nome))
+	{
+		yyerror("Constante de enum '" + nome + "' não pode ser alterada");
+		out.tipo = sym->tipo;
+		out.label = sym->nome_interno;
+		out.traducao = "";
+		return out;
+	}
+
 	if (!sym->inicializado)
 		yyerror("Variável '" + nome + "' usada antes de inicialização");
 
@@ -1173,6 +1243,15 @@ atributos gerar_atribuicao(const string& nome, const atributos& expr)
 		out.label = "";
 		out.traducao = expr.traducao;
 		out.tipo = expr.tipo;
+		return out;
+	}
+
+	if (is_enum_constante(nome))
+	{
+		yyerror("Constante de enum '" + nome + "' não pode ser alterada");
+		out.label = sym->nome_interno;
+		out.traducao = expr.traducao;
+		out.tipo = sym->tipo;
 		return out;
 	}
 
@@ -1231,6 +1310,16 @@ atributos gerar_atribuicao_composta(const string& nome, const char* op, const at
 		return out;
 	}
 
+	if (is_enum_constante(nome))
+	{
+		atributos out;
+		yyerror("Constante de enum '" + nome + "' não pode ser alterada");
+		out.label = sym->nome_interno;
+		out.traducao = expr.traducao;
+		out.tipo = sym->tipo;
+		return out;
+	}
+
 	atribuir_temporario(nome);
 	atributos esquerda;
 	esquerda.tipo = sym->tipo;
@@ -1276,6 +1365,80 @@ string append_param_decl(const string& atual, const string& tipo, const string& 
 	out += sep;
 	out += nome;
 	return out;
+}
+
+string append_enum_item(const string& atual, const string& nome, const string& valor)
+{
+	string out = atual;
+	if (!out.empty())
+		out += ",";
+	out += nome;
+	out += "=";
+	out += valor;
+	return out;
+}
+
+void registrar_enum(const string& nome, const string& itens_serializados)
+{
+	if (!nome.empty()) // enums com nome nao podem ser declarados duas vezes
+	{
+		if (enums_declarados.find(nome) != enums_declarados.end())
+			yyerror("Enum '" + nome + "' redeclarado");
+		enums_declarados[nome] = true;
+	}
+
+	vector<string> itens; // separa itens do enum
+	string atual;
+	for (char ch : itens_serializados)
+	{
+		if (ch == ',')
+		{
+			itens.push_back(atual);
+			atual.clear();
+		}
+		else
+			atual += ch;
+	}
+	if (!atual.empty())
+		itens.push_back(atual);
+
+	int proximo_valor = 0;
+	map<string, bool> nomes_do_enum;
+	for (size_t i = 0; i < itens.size(); ++i)
+	{
+		string item = itens[i];
+		string valor_texto = "";
+		string nome_item = "";
+		bool lendo_valor = false;
+		for (char ch : item)
+		{
+			if (ch == '=')
+				lendo_valor = true;
+			else if (lendo_valor)
+				valor_texto += ch;
+			else
+				nome_item += ch;
+		}
+
+		if (nomes_do_enum[nome_item])
+			yyerror("Item de enum '" + nome_item + "' redeclarado");
+		nomes_do_enum[nome_item] = true;
+
+		if (!valor_texto.empty())
+			proximo_valor = stoi(valor_texto);
+
+		auto &cur = escopo_atual();
+		if (cur.find(nome_item) != cur.end())
+			yyerror("Variável '" + nome_item + "' redeclarada");
+		else
+		{
+			// Cada item do enum vira uma constante int inicializada com o valor atual.
+			cur.emplace(nome_item, simbolo(nome_item, "int", to_string(proximo_valor), true));
+			enum_constantes[nome_item] = true;
+		}
+
+		proximo_valor++;
+	}
 }
 
 vector<parametro_funcao> parse_parametros_funcao(const string& serializado)
@@ -2340,6 +2503,8 @@ int main(int argc, char* argv[])
 	push_scope();
 	tipos_temp.clear();
 	funcoes.clear();
+	enums_declarados.clear();
+	enum_constantes.clear();
 	funcao_atual = nullptr;
 	int rc = yyparse();
 	if (rc == 0 && erros == 0)
