@@ -1,0 +1,4 @@
+int v[3] = {5, 10, 15};
+int soma;
+soma = v[0] + v[1] + v[2];
+print(soma);
