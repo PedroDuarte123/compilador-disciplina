@@ -70,11 +70,12 @@ struct simbolo{
 	string nome_interno;
 	bool inicializado;
 	int tamanho;
+	int ncols; // >0 indica matriz, guarda número de colunas para linearização
 
-	simbolo() : nome(""), tipo(""), nome_interno(""), inicializado(false), tamanho(0) {}
+	simbolo() : nome(""), tipo(""), nome_interno(""), inicializado(false), tamanho(0), ncols(0) {}
 
-	simbolo(string argnome, string argtipo, string argnomeinterno, bool arginicializado = false, int argtamanho = 0):
-		nome(argnome), tipo(argtipo), nome_interno(argnomeinterno), inicializado(arginicializado), tamanho(argtamanho) {} 
+	simbolo(string argnome, string argtipo, string argnomeinterno, bool arginicializado = false, int argtamanho = 0, int argncols = 0):
+		nome(argnome), tipo(argtipo), nome_interno(argnomeinterno), inicializado(arginicializado), tamanho(argtamanho), ncols(argncols) {} 
 };
 
 #define YYSTYPE atributos
@@ -144,6 +145,9 @@ void atribuir_temporario(string);
 string upcast_para_float(string label, string tipo, string &code);
 atributos gerar_acesso_vetor(const string& nome, const atributos& indice);
 atributos gerar_atribuicao_vetor(const string& nome, const atributos& indice, const atributos& expr);
+string gerar_indice_linear(const string& linha_label, int ncols, const string& coluna_label, string& codigo);
+atributos gerar_acesso_matriz(const string& nome, const atributos& linha, const atributos& coluna);
+atributos gerar_atribuicao_matriz(const string& nome, const atributos& linha, const atributos& coluna, const atributos& expr);
 void enter_switch(const atributos& expr); // funções para suportar switches aninhados (pilha de switches)
 void exit_switch(); //
 const switch_context& current_switch(); //
@@ -403,7 +407,7 @@ PARAMS_DECL_OPT : PARAMS_DECL
 			{
 				$$.label = $1.label;
 			}
-			| /* vazio */
+			|
 			{
 				$$.label = "";
 			}
@@ -422,7 +426,25 @@ COMANDO		: TIPO TK_ID ';'
 				}
 				$$.traducao = "";
 			}
-			| TIPO TK_ID '[' TK_NUM ']' ';'
+			| TIPO TK_ID '[' TK_NUM ']' '[' TK_NUM ']' ';'
+		{
+			auto &cur = escopo_atual();
+			if (cur.find($2.label) != cur.end())
+			{
+				yyerror("Variável '" + $2.label + "' redeclarada");
+			}
+			else
+			{
+				int nrows = stoi($4.label);
+				int ncols  = stoi($7.label);
+				if (nrows <= 0 || ncols <= 0)
+					yyerror("Dimensões da matriz devem ser maiores que zero");
+				int total = nrows * ncols;
+				cur.emplace($2.label, simbolo($2.label, $1.tipo + "[]", "", false, total, ncols));
+			}
+			$$.traducao = "";
+		}
+		| TIPO TK_ID '[' TK_NUM ']' ';'
 		{
 			auto &cur = escopo_atual();
 			if (cur.find($2.label) != cur.end())
@@ -1033,7 +1055,15 @@ E 			: E '+' E
 				$$.traducao = $2.traducao;
 				$$.tipo = $2.tipo;
 			}
-			| TK_ID '[' E ']' '=' E
+			| TK_ID '[' E ']' '[' E ']' '=' E
+		{
+			$$ = gerar_atribuicao_matriz($1.label, $3, $6, $9);
+		}
+		| TK_ID '[' E ']' '[' E ']'
+		{
+			$$ = gerar_acesso_matriz($1.label, $3, $6);
+		}
+		| TK_ID '[' E ']' '=' E
 		{
 			$$ = gerar_atribuicao_vetor($1.label, $3, $6);
 		}
@@ -2639,6 +2669,111 @@ atributos gerar_atribuicao_vetor(const string& nome, const atributos& indice, co
 	out.tipo = tipo_elemento;
 	out.label = dest;
 	out.traducao = indice.traducao + codigo_expr + "\t" + dest + " = " + label_expr + ";\n";
+	return out;
+}
+
+// ─── Funções de Matriz (linearização: m[i][j] → m[i*ncols + j]) ──────────────
+
+string gerar_indice_linear(const string& linha_label, int ncols, const string& coluna_label, string& codigo)
+{
+	string t_mult = gentempcode("int");
+	string t_idx  = gentempcode("int");
+	codigo += "\t" + t_mult + " = " + linha_label + " * " + to_string(ncols) + ";\n";
+	codigo += "\t" + t_idx  + " = " + t_mult + " + " + coluna_label + ";\n";
+	return t_idx;
+}
+
+atributos gerar_acesso_matriz(const string& nome, const atributos& linha, const atributos& coluna)
+{
+	atributos out;
+	is_declarado(nome);
+	simbolo* sym = buscar_simbolo(nome);
+	if (!sym)
+	{
+		out.traducao = linha.traducao + coluna.traducao;
+		out.tipo = "int";
+		return out;
+	}
+	if (sym->ncols == 0 || !foca_is_array(sym->tipo))
+	{
+		yyerror("Identificador '" + nome + "' não é uma matriz bidimensional");
+		out.traducao = linha.traducao + coluna.traducao;
+		out.tipo = tipo_sem_array(sym->tipo);
+		return out;
+	}
+	if (linha.tipo != "int")
+		yyerror("Índice de linha da matriz deve ser inteiro");
+	if (coluna.tipo != "int")
+		yyerror("Índice de coluna da matriz deve ser inteiro");
+
+	if (sym->nome_interno.empty())
+		atribuir_temporario(nome);
+
+	string tipo_elemento = tipo_sem_array(sym->tipo);
+	string codigo = linha.traducao + coluna.traducao;
+	string t_idx = gerar_indice_linear(linha.label, sym->ncols, coluna.label, codigo);
+
+	out.label = sym->nome_interno + "[" + t_idx + "]";
+	out.tipo = tipo_elemento;
+	out.traducao = codigo;
+	return out;
+}
+
+atributos gerar_atribuicao_matriz(const string& nome, const atributos& linha, const atributos& coluna, const atributos& expr)
+{
+	atributos out;
+	is_declarado(nome);
+	simbolo* sym = buscar_simbolo(nome);
+	if (!sym)
+	{
+		out.traducao = linha.traducao + coluna.traducao + expr.traducao;
+		out.tipo = "int";
+		return out;
+	}
+	if (sym->ncols == 0 || !foca_is_array(sym->tipo))
+	{
+		yyerror("Identificador '" + nome + "' não é uma matriz bidimensional");
+		out.traducao = linha.traducao + coluna.traducao + expr.traducao;
+		out.tipo = sym->tipo;
+		return out;
+	}
+	if (linha.tipo != "int")
+		yyerror("Índice de linha da matriz deve ser inteiro");
+	if (coluna.tipo != "int")
+		yyerror("Índice de coluna da matriz deve ser inteiro");
+
+	string tipo_elemento = tipo_sem_array(sym->tipo);
+	string label_expr = expr.label;
+	string codigo_expr = expr.traducao;
+	string tipo_expr   = expr.tipo;
+
+	if (tipo_elemento == "float" && tipo_expr == "int")
+	{
+		string tmp = gentempcode("float");
+		codigo_expr += "\t" + tmp + " = (float) " + label_expr + ";\n";
+		label_expr = tmp;
+		tipo_expr  = "float";
+	}
+	else if (tipo_elemento == "int" && tipo_expr == "float")
+	{
+		yyerror("Conversão explícita necessária para atribuir float em int");
+	}
+	else if (tipo_elemento != tipo_expr)
+	{
+		yyerror("Tipos incompatíveis na atribuição à matriz '" + nome + "'");
+	}
+
+	if (sym->nome_interno.empty())
+		atribuir_temporario(nome);
+
+	string codigo = linha.traducao + coluna.traducao;
+	string t_idx = gerar_indice_linear(linha.label, sym->ncols, coluna.label, codigo);
+	codigo += codigo_expr;
+
+	string dest = sym->nome_interno + "[" + t_idx + "]";
+	out.tipo = tipo_elemento;
+	out.label = dest;
+	out.traducao = codigo + "\t" + dest + " = " + label_expr + ";\n";
 	return out;
 }
 
