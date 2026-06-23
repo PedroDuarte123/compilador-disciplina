@@ -1,0 +1,14 @@
+/*Compilador FOCA*/
+#include <stdio.h>
+
+int main(void) {
+	float t1;
+	float t2;
+	float t3;
+
+	t1 = 3.14;
+	t2 = t1;
+	t3 = t2;
+	printf("%f", t3);
+	return 0;
+}

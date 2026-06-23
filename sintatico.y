@@ -407,13 +407,31 @@ PARAMS_DECL_OPT : PARAMS_DECL
 			{
 				$$.label = $1.label;
 			}
-			|
+			| /* vazio */
 			{
 				$$.label = "";
 			}
 			;
 
-COMANDO		: TIPO TK_ID ';'
+COMANDO		: TIPO TK_ID '=' E ';'
+			{
+				// int x = 5;  ou  float y = 3.14;
+				auto &cur = escopo_atual();
+				if (cur.find($2.label) != cur.end())
+				{
+					yyerror("Variável '" + $2.label + "' redeclarada");
+					$$.traducao = $4.traducao;
+				}
+				else
+				{
+					cur.emplace($2.label, simbolo($2.label, $1.tipo, "", false));
+					atributos res = gerar_atribuicao($2.label, $4);
+					simbolo* sym = buscar_simbolo($2.label);
+					if (sym) sym->inicializado = true;
+					$$.traducao = res.traducao;
+				}
+			}
+			| TIPO TK_ID ';'
 			{
 				auto &cur = escopo_atual();
 				if (cur.find($2.label) != cur.end())
@@ -426,7 +444,52 @@ COMANDO		: TIPO TK_ID ';'
 				}
 				$$.traducao = "";
 			}
-			| TIPO TK_ID '[' TK_NUM ']' '[' TK_NUM ']' ';'
+			| TIPO TK_ID '[' TK_NUM ']' '[' TK_NUM ']' '=' '{' LISTA_INIT '}' ';'
+		{
+			// int m[2][3] = {1, 2, 3, 4, 5, 6};
+			auto &cur = escopo_atual();
+			if (cur.find($2.label) != cur.end())
+			{
+				yyerror("Variável '" + $2.label + "' redeclarada");
+				$$.traducao = $11.traducao;
+			}
+			else
+			{
+				int nrows = stoi($4.label);
+				int ncols  = stoi($7.label);
+				if (nrows <= 0 || ncols <= 0)
+					yyerror("Dimensões da matriz devem ser maiores que zero");
+				int total = nrows * ncols;
+				cur.emplace($2.label, simbolo($2.label, $1.tipo + "[]", "", true, total, ncols));
+				atribuir_temporario($2.label);
+				simbolo* sym = buscar_simbolo($2.label);
+
+				vector<string> labels_init = split_print_args($11.label);
+				vector<string> tipos_init  = split_print_args($11.tipo);
+
+				if ((int)labels_init.size() != total)
+					yyerror("Número de inicializadores (" + to_string(labels_init.size()) +
+						") não corresponde ao tamanho da matriz (" + to_string(total) + ")");
+
+				string codigo = $11.traducao;
+				for (int i = 0; i < (int)labels_init.size(); i++)
+				{
+					string lval = labels_init[i];
+					string tval = (i < (int)tipos_init.size()) ? tipos_init[i] : "int";
+					if ($1.tipo == "float" && tval == "int")
+					{
+						string tmp = gentempcode("float");
+						codigo += "\t" + tmp + " = (float) " + lval + ";\n";
+						lval = tmp;
+					}
+					else if ($1.tipo == "int" && tval == "float")
+						yyerror("Conversão explícita necessária para atribuir float em int");
+					codigo += "\t" + sym->nome_interno + "[" + to_string(i) + "] = " + lval + ";\n";
+				}
+				$$.traducao = codigo;
+			}
+		}
+		| TIPO TK_ID '[' TK_NUM ']' '[' TK_NUM ']' ';'
 		{
 			auto &cur = escopo_atual();
 			if (cur.find($2.label) != cur.end())
@@ -443,6 +506,49 @@ COMANDO		: TIPO TK_ID ';'
 				cur.emplace($2.label, simbolo($2.label, $1.tipo + "[]", "", false, total, ncols));
 			}
 			$$.traducao = "";
+		}
+		| TIPO TK_ID '[' TK_NUM ']' '=' '{' LISTA_INIT '}' ';'
+		{
+			// int v[3] = {10, 20, 30};
+			auto &cur = escopo_atual();
+			if (cur.find($2.label) != cur.end())
+			{
+				yyerror("Variável '" + $2.label + "' redeclarada");
+				$$.traducao = $8.traducao;
+			}
+			else
+			{
+				int tamanho = stoi($4.label);
+				if (tamanho <= 0)
+					yyerror("Tamanho de vetor deve ser maior que zero");
+				cur.emplace($2.label, simbolo($2.label, $1.tipo + "[]", "", true, tamanho));
+				atribuir_temporario($2.label);
+				simbolo* sym = buscar_simbolo($2.label);
+
+				vector<string> labels_init = split_print_args($8.label);
+				vector<string> tipos_init  = split_print_args($8.tipo);
+
+				if ((int)labels_init.size() != tamanho)
+					yyerror("Número de inicializadores (" + to_string(labels_init.size()) +
+						") não corresponde ao tamanho do vetor (" + to_string(tamanho) + ")");
+
+				string codigo = $8.traducao;
+				for (int i = 0; i < (int)labels_init.size(); i++)
+				{
+					string lval = labels_init[i];
+					string tval = (i < (int)tipos_init.size()) ? tipos_init[i] : "int";
+					if ($1.tipo == "float" && tval == "int")
+					{
+						string tmp = gentempcode("float");
+						codigo += "\t" + tmp + " = (float) " + lval + ";\n";
+						lval = tmp;
+					}
+					else if ($1.tipo == "int" && tval == "float")
+						yyerror("Conversão explícita necessária para atribuir float em int");
+					codigo += "\t" + sym->nome_interno + "[" + to_string(i) + "] = " + lval + ";\n";
+				}
+				$$.traducao = codigo;
+			}
 		}
 		| TIPO TK_ID '[' TK_NUM ']' ';'
 		{
@@ -805,6 +911,25 @@ BLOCO		: '{'
 			{
 				pop_scope();
 				$$.traducao = $3.traducao;
+			}
+			;
+
+// Lista de expressões separadas por vírgula usada em inicializações {1, 2, 3}
+// label  = valores separados por \x1f  (ex: "t1\x1ft2\x1ft3")
+// tipo   = tipos  separados por \x1f  (ex: "int\x1fint\x1ffloat")
+// traducao = código acumulado de todas as expressões
+LISTA_INIT	: E
+			{
+				$$.label    = $1.label;
+				$$.tipo     = $1.tipo;
+				$$.traducao = $1.traducao;
+			}
+			| LISTA_INIT ',' E
+			{
+				const char sep = '\x1f';
+				$$.label    = $1.label    + sep + $3.label;
+				$$.tipo     = $1.tipo     + sep + $3.tipo;
+				$$.traducao = $1.traducao + $3.traducao;
 			}
 			;
 
@@ -2615,6 +2740,13 @@ atributos gerar_acesso_vetor(const string& nome, const atributos& indice)
 		out.tipo = sym->tipo;
 		return out;
 	}
+	if (sym->ncols > 0)
+	{
+		yyerror("Identificador '" + nome + "' é uma matriz, use dois índices: " + nome + "[i][j]");
+		out.traducao = indice.traducao;
+		out.tipo = tipo_sem_array(sym->tipo);
+		return out;
+	}
 	if (indice.tipo != "int")
 		yyerror("Índice de vetor deve ser inteiro");
 	string tipo_elemento = tipo_sem_array(sym->tipo);
@@ -2641,6 +2773,13 @@ atributos gerar_atribuicao_vetor(const string& nome, const atributos& indice, co
 	{
 		yyerror("Identificador '" + nome + "' não é um vetor");
 		return gerar_atribuicao(nome, expr);
+	}
+	if (sym->ncols > 0)
+	{
+		yyerror("Identificador '" + nome + "' é uma matriz, use dois índices: " + nome + "[i][j]");
+		out.traducao = indice.traducao + expr.traducao;
+		out.tipo = tipo_sem_array(sym->tipo);
+		return out;
 	}
 	if (indice.tipo != "int")
 		yyerror("Índice de vetor deve ser inteiro");
