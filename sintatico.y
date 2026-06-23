@@ -69,15 +69,17 @@ struct simbolo{
 	string tipo;
 	string nome_interno;
 	bool inicializado;
+	int tamanho;
 
-	simbolo() : nome(""), tipo(""), nome_interno(""), inicializado(false) {}
+	simbolo() : nome(""), tipo(""), nome_interno(""), inicializado(false), tamanho(0) {}
 
-	simbolo(string argnome, string argtipo, string argnomeinterno, bool arginicializado = false):
-		nome(argnome), tipo(argtipo), nome_interno(argnomeinterno), inicializado(arginicializado) {} 
+	simbolo(string argnome, string argtipo, string argnomeinterno, bool arginicializado = false, int argtamanho = 0):
+		nome(argnome), tipo(argtipo), nome_interno(argnomeinterno), inicializado(arginicializado), tamanho(argtamanho) {} 
 };
 
 #define YYSTYPE atributos
 map<string, string> tipos_temp;
+map<string, int> tamanhos_array;
 
 static vector< map<string, simbolo> > escopos;
 static map<string, funcao_info> funcoes;
@@ -92,7 +94,19 @@ static map<string, simbolo>& escopo_atual();
 simbolo* buscar_simbolo(const string& nome);
 const simbolo* buscar_simbolo_const(const string& nome);
 
-bool is_tipo_valido(const string& t) { return t == "int" || t == "float" || t == "char" || t == "boolean" || t == "string"; }
+bool foca_is_array(const string& t) { return t.size() > 2 && t.substr(t.size() - 2) == "[]"; }
+string tipo_sem_array(const string& t) { return foca_is_array(t) ? t.substr(0, t.size() - 2) : t; }
+
+bool is_tipo_valido(const string& t) {
+	if (foca_is_array(t))
+	{
+		string base = tipo_sem_array(t);
+		if (base == "string")
+			return false;
+		return is_tipo_valido(base);
+	}
+	return t == "int" || t == "float" || t == "char" || t == "boolean" || t == "string";
+}
 bool is_string(const string& t) { return t == "string"; }
 bool is_enum_constante(const string& nome) { return enum_constantes.find(nome) != enum_constantes.end(); }
 string tipo_resultado_aritmetico(const string& a, const string& b)
@@ -101,6 +115,8 @@ string tipo_resultado_aritmetico(const string& a, const string& b)
 	return "int";
 }
 string tipo_para_c(const string& t) {
+	if (foca_is_array(t))
+		return tipo_para_c(tipo_sem_array(t)) + "[]";
 	if (t == "boolean") return "int";
 	if (t == "char")    return "char";
 	if (t == "float")   return "float";
@@ -126,6 +142,8 @@ void is_declarado(string);
 void is_inicializado(string);
 void atribuir_temporario(string);
 string upcast_para_float(string label, string tipo, string &code);
+atributos gerar_acesso_vetor(const string& nome, const atributos& indice);
+atributos gerar_atribuicao_vetor(const string& nome, const atributos& indice, const atributos& expr);
 void enter_switch(const atributos& expr); // funções para suportar switches aninhados (pilha de switches)
 void exit_switch(); //
 const switch_context& current_switch(); //
@@ -404,7 +422,23 @@ COMANDO		: TIPO TK_ID ';'
 				}
 				$$.traducao = "";
 			}
-			| ENUM_DECL
+			| TIPO TK_ID '[' TK_NUM ']' ';'
+		{
+			auto &cur = escopo_atual();
+			if (cur.find($2.label) != cur.end())
+			{
+				yyerror("Variável '" + $2.label + "' redeclarada");
+			}
+			else
+			{
+				int tamanho = stoi($4.label);
+				if (tamanho <= 0)
+					yyerror("Tamanho de vetor deve ser maior que zero");
+				cur.emplace($2.label, simbolo($2.label, $1.tipo + "[]", "", false, tamanho));
+			}
+			$$.traducao = "";
+		}
+		| ENUM_DECL
 			{
 				$$.traducao = "";
 			}
@@ -817,9 +851,25 @@ FOR_INIT	: E
 		{
 			auto &cur = escopo_atual();
 			if (cur.find($2.label) != cur.end())
-			{ yyerror("Vari�vel '" + $2.label + "' redeclarada"); }
+			{ yyerror("Variável '" + $2.label + "' redeclarada"); }
 			else
 			{ cur.emplace($2.label, simbolo($2.label, $1.tipo, "", false)); }
+			$$.traducao = "";
+			$$.label = "";
+			$$.tipo = "int";
+		}
+		| TIPO TK_ID '[' TK_NUM ']'
+		{
+			auto &cur = escopo_atual();
+			if (cur.find($2.label) != cur.end())
+			{ yyerror("Variável '" + $2.label + "' redeclarada"); }
+			else
+			{
+				int tamanho = stoi($4.label);
+				if (tamanho <= 0)
+					yyerror("Tamanho de vetor deve ser maior que zero");
+				cur.emplace($2.label, simbolo($2.label, $1.tipo + "[]", "", false, tamanho));
+			}
 			$$.traducao = "";
 			$$.label = "";
 			$$.tipo = "int";
@@ -983,7 +1033,15 @@ E 			: E '+' E
 				$$.traducao = $2.traducao;
 				$$.tipo = $2.tipo;
 			}
-			| TK_ID '=' E
+			| TK_ID '[' E ']' '=' E
+		{
+			$$ = gerar_atribuicao_vetor($1.label, $3, $6);
+		}
+		| TK_ID '[' E ']'
+		{
+			$$ = gerar_acesso_vetor($1.label, $3);
+		}
+		| TK_ID '=' E
 			{
 				$$ = gerar_atribuicao($1.label, $3);
 			}
@@ -2149,12 +2207,24 @@ string gen_temp_declarations_range(int inicio_exclusivo, int fim_inclusivo)
 		string temp = "t" + to_string(i);
 		string tipo = tipos_temp[temp];
 		if (tipo.empty()) tipo = "int";
-		declarations += "\t" + tipo_para_c(tipo) + " " + temp + ";\n";
-		if (tipo == "string")
+		if (foca_is_array(tipo))
 		{
-			init_code += "\t" + temp + ".data = NULL;\n";
-			init_code += "\t" + temp + ".len = 0;\n";
-			init_code += "\t" + temp + ".cap = 0;\n";
+			string base = tipo_sem_array(tipo);
+			int tamanho = 1;
+			auto it = tamanhos_array.find(temp);
+			if (it != tamanhos_array.end())
+				tamanho = it->second;
+			declarations += "\t" + tipo_para_c(base) + " " + temp + "[" + to_string(tamanho) + "];\n";
+		}
+		else
+		{
+			declarations += "\t" + tipo_para_c(tipo) + " " + temp + ";\n";
+			if (tipo == "string")
+			{
+				init_code += "\t" + temp + ".data = NULL;\n";
+				init_code += "\t" + temp + ".len = 0;\n";
+				init_code += "\t" + temp + ".cap = 0;\n";
+			}
 		}
 	}
 	if (fim_inclusivo > inicio_exclusivo)
@@ -2492,7 +2562,84 @@ void atribuir_temporario(string nome)
 		if (!is_tipo_valido(tipo))
 			tipo = "int";
 		sym->nome_interno = gentempcode(tipo);
+		if (foca_is_array(tipo) && sym->tamanho > 0)
+			tamanhos_array[sym->nome_interno] = sym->tamanho;
 	}
+}
+
+atributos gerar_acesso_vetor(const string& nome, const atributos& indice)
+{
+	atributos out;
+	is_declarado(nome);
+	const simbolo* sym = buscar_simbolo_const(nome);
+	if (!sym)
+	{
+		out.traducao = indice.traducao;
+		out.tipo = "int";
+		return out;
+	}
+	if (!foca_is_array(sym->tipo))
+	{
+		yyerror("Identificador '" + nome + "' não é um vetor");
+		out.traducao = indice.traducao;
+		out.tipo = sym->tipo;
+		return out;
+	}
+	if (indice.tipo != "int")
+		yyerror("Índice de vetor deve ser inteiro");
+	string tipo_elemento = tipo_sem_array(sym->tipo);
+	out.traducao = indice.traducao;
+	if (sym->nome_interno.empty())
+		atribuir_temporario(nome);
+	out.label = sym->nome_interno + "[" + indice.label + "]";
+	out.tipo = tipo_elemento;
+	return out;
+}
+
+atributos gerar_atribuicao_vetor(const string& nome, const atributos& indice, const atributos& expr)
+{
+	atributos out;
+	is_declarado(nome);
+	simbolo* sym = buscar_simbolo(nome);
+	if (!sym)
+	{
+		out.traducao = indice.traducao + expr.traducao;
+		out.tipo = "int";
+		return out;
+	}
+	if (!foca_is_array(sym->tipo))
+	{
+		yyerror("Identificador '" + nome + "' não é um vetor");
+		return gerar_atribuicao(nome, expr);
+	}
+	if (indice.tipo != "int")
+		yyerror("Índice de vetor deve ser inteiro");
+	string tipo_elemento = tipo_sem_array(sym->tipo);
+	string label_expr = expr.label;
+	string codigo_expr = expr.traducao;
+	string tipo_expr = expr.tipo;
+	if (tipo_elemento == "float" && tipo_expr == "int")
+	{
+		string tmp = gentempcode("float");
+		codigo_expr += "\t" + tmp + " = (float) " + label_expr + ";\n";
+		label_expr = tmp;
+		tipo_expr = "float";
+	}
+	else if (tipo_elemento == "int" && tipo_expr == "float")
+	{
+		yyerror("Conversão explícita necessária para atribuir float em int");
+	}
+	else if (tipo_elemento != tipo_expr)
+	{
+		yyerror("Tipos incompatíveis na atribuição ao vetor '" + nome + "'");
+	}
+	if (sym->nome_interno.empty())
+		atribuir_temporario(nome);
+	string dest = sym->nome_interno + "[" + indice.label + "]";
+	out.tipo = tipo_elemento;
+	out.label = dest;
+	out.traducao = indice.traducao + codigo_expr + "\t" + dest + " = " + label_expr + ";\n";
+	return out;
 }
 
 simbolo* buscar_simbolo(const string& nome)
@@ -2544,6 +2691,7 @@ int main(int argc, char* argv[])
 	escopos.clear();
 	push_scope();
 	tipos_temp.clear();
+	tamanhos_array.clear();
 	funcoes.clear();
 	enums_declarados.clear();
 	enum_constantes.clear();
