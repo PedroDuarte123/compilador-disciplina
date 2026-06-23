@@ -1,0 +1,32 @@
+/*Compilador FOCA*/
+#include <stdio.h>
+int main(void) {
+    float notas[8];
+    float resultado;
+    int t1;
+    int t2;
+    int t3;
+    int t4;
+    float t5;
+    float t6;
+    float t7;
+    float t8;
+    float t9;
+
+    t1 = 0;      
+    t2 = t1 * 4; 
+    t3 = 3;       
+    t4 = t2 + t3; 
+    t5 = 7.5;
+    notas[t4] = t5;
+
+    t6 = notas[t4];
+    t7 = 2.0;
+    t8 = t6 * t7;
+    resultado = t8;
+
+    t9 = resultado;
+    printf("%f", t9);
+
+    return 0;
+}

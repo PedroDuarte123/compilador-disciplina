@@ -1,0 +1,7 @@
+float notas[2][4];
+float resultado;
+
+notas[0][3] = 7.5;
+resultado = notas[0][3] * 2.0;
+
+print(resultado);

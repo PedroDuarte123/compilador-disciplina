@@ -1,0 +1,26 @@
+/*Compilador FOCA*/
+#include <stdio.h>
+int main(void) {
+    int m[9];
+    int x;
+    int t1;
+    int t2;
+    int t3;
+    int t4;
+    int t5;
+    int t6;
+
+    t1 = 1;      
+    t2 = t1 * 3; 
+    t3 = 2;      
+    t4 = t2 + t3; 
+    m[t4] = 42;   
+
+    t5 = m[t4];   
+    x = t5;
+
+    t6 = x;
+    printf("%d", t6);
+    
+    return 0;
+}

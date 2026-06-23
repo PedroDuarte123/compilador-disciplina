@@ -1,0 +1,8 @@
+int v[5];
+int resultado;
+
+v[2] = 10;
+v[3] = 20;
+resultado = v[2] + v[3];
+
+print(resultado);
